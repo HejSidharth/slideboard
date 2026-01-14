@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SlideBoard
+
+SlideBoard is a minimal presentation tool that combines a slide deck with Excalidraw whiteboards. Each slide is an interactive canvas, making it well suited for tutoring, problem solving, and live teaching.
+
+## Features
+
+- Slide-based workflow with Excalidraw whiteboards
+- Create, duplicate, reorder, and delete slides
+- Presentation mode for full-screen delivery
+- Auto-save to localStorage
+- Import and export presentations as JSON
+- Optional AI assistant sidebar powered by OpenRouter
+- Light and dark themes
+
+## Tech Stack
+
+- Next.js (App Router)
+- React
+- Tailwind CSS
+- shadcn/ui
+- Excalidraw
+- Zustand
+- @dnd-kit
+
+## Requirements
+
+- Node.js 18 or newer
+- npm, yarn, pnpm, or bun
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000` in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Usage
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Create a presentation
 
-## Learn More
+- From the dashboard, choose "Create presentation" to start a new deck.
+- Rename the deck from the toolbar.
+- Add or duplicate slides as needed.
 
-To learn more about Next.js, take a look at the following resources:
+### Draw on slides
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Each slide contains an Excalidraw canvas.
+- Changes are saved automatically.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Present
 
-## Deploy on Vercel
+- Click the "Present" button to enter presentation mode.
+- Use on-screen controls or keyboard shortcuts to navigate.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Export and import
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Export a deck from the toolbar to download a JSON file.
+- Import a previously exported file from the dashboard.
+
+### AI assistant (optional)
+
+The chat assistant uses OpenRouter. To enable it:
+
+1. Open the chat sidebar from the floating button.
+2. Provide your OpenRouter API key when prompted.
+3. The key is stored in localStorage on your device.
+
+## Build
+
+```bash
+npm run build
+npm run start
+```
+
+## Configuration
+
+No server-side configuration is required. All data persists in localStorage.
+
+## Contributing
+
+Issues and pull requests are welcome. Please keep changes focused and include relevant context in descriptions.
+
+## License
+
+This project does not currently specify a license.
