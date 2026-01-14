@@ -61,6 +61,17 @@ const ExcalidrawWrapper = forwardRef<ExcalidrawImperativeAPI | null, ExcalidrawW
       setMounted(true);
     }, []);
 
+    // Prevent browser back/forward navigation gestures on macOS Chrome
+    // by setting overscrollBehaviorX on the document element (like Excalidraw does internally)
+    useEffect(() => {
+      const originalValue = document.documentElement.style.overscrollBehaviorX;
+      document.documentElement.style.overscrollBehaviorX = "none";
+
+      return () => {
+        document.documentElement.style.overscrollBehaviorX = originalValue;
+      };
+    }, []);
+
     const handleExcalidrawAPI = useCallback(
       (api: ExcalidrawImperativeAPI) => {
         if (ref && typeof ref === "object") {

@@ -133,7 +133,7 @@ export default function PresentationModePage() {
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
           <h1 className="text-2xl font-semibold mb-2">Presentation not found</h1>
-          <Button onClick={() => router.push("/")}>Go Home</Button>
+          <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
         </div>
       </div>
     );
@@ -151,6 +151,13 @@ export default function PresentationModePage() {
           viewModeEnabled={true}
           zenModeEnabled={true}
         />
+      </div>
+
+      {/* Persistent slide counter - always visible in bottom-right */}
+      <div className="absolute bottom-20 right-6 z-10">
+        <div className="bg-black/60 text-white text-sm px-3 py-1.5 rounded-full font-medium backdrop-blur-sm">
+          {currentIndex + 1} / {totalSlides}
+        </div>
       </div>
 
       {/* Controls Overlay */}

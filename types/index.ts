@@ -40,6 +40,7 @@ export interface PresentationStore {
   
   // Slide operations
   addSlide: (presentationId: string) => void;
+  addSlideFromTemplate: (presentationId: string, templateId: string, values: Record<string, string>) => void;
   deleteSlide: (presentationId: string, slideIndex: number) => void;
   duplicateSlide: (presentationId: string, slideIndex: number) => void;
   reorderSlides: (presentationId: string, fromIndex: number, toIndex: number) => void;

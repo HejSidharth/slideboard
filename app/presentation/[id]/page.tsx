@@ -47,6 +47,7 @@ export default function PresentationEditorPage() {
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const presentation = usePresentationStore((s) =>
     s.presentations.find((p) => p.id === presentationId)
@@ -136,7 +137,7 @@ export default function PresentationEditorPage() {
           <p className="text-muted-foreground mb-4">
             This presentation may have been deleted or doesn't exist.
           </p>
-          <Button onClick={() => router.push("/")}>Go Home</Button>
+          <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
         </div>
       </div>
     );
@@ -149,11 +150,11 @@ export default function PresentationEditorPage() {
         <div className="flex items-center gap-3">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={() => router.push("/")}>
+              <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Back to Home</TooltipContent>
+            <TooltipContent>Back to Dashboard</TooltipContent>
           </Tooltip>
 
           <Separator orientation="vertical" className="h-6" />
@@ -229,6 +230,8 @@ export default function PresentationEditorPage() {
         <SlideSidebar
           presentation={presentation}
           presentationId={presentationId}
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
         />
 
         {/* Canvas Area */}

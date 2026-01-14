@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
+import { generateTemplateElements } from "@/lib/slide-templates";
 import type { Presentation, PresentationStore, SlideData } from "@/types";
 
 const createEmptySlide = (): SlideData => ({
@@ -102,6 +103,43 @@ export const usePresentationStore = create<PresentationStore>()(
               newSlide,
               ...p.slides.slice(p.currentSlideIndex + 1),
             ];
+            return {
+              ...p,
+              slides: newSlides,
+              currentSlideIndex: p.currentSlideIndex + 1,
+              updatedAt: Date.now(),
+            };
+          }),
+        }));
+      },
+
+      addSlideFromTemplate: (
+        presentationId: string,
+        templateId: string,
+        values: Record<string, string>
+      ) => {
+        set((state) => ({
+          presentations: state.presentations.map((p) => {
+            if (p.id !== presentationId) return p;
+            
+            const elements = generateTemplateElements(templateId, values);
+            const newSlide: SlideData = {
+              id: nanoid(),
+              elements,
+              appState: {
+                viewBackgroundColor: "#ffffff",
+              },
+              files: {},
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+            
+            const newSlides = [
+              ...p.slides.slice(0, p.currentSlideIndex + 1),
+              newSlide,
+              ...p.slides.slice(p.currentSlideIndex + 1),
+            ];
+            
             return {
               ...p,
               slides: newSlides,

@@ -13,10 +13,23 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import { usePresentationStore } from "@/store/use-presentation-store";
 
-export function CreatePresentationDialog() {
+interface CreatePresentationDialogProps {
+  label?: string;
+  showIcon?: boolean;
+  buttonSize?: "default" | "sm" | "lg" | "icon";
+  className?: string;
+}
+
+export function CreatePresentationDialog({
+  label = "New Presentation",
+  showIcon = true,
+  buttonSize = "lg",
+  className,
+}: CreatePresentationDialogProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const router = useRouter();
@@ -40,9 +53,9 @@ export function CreatePresentationDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" className="gap-2">
-          <Plus className="h-5 w-5" />
-          New Presentation
+        <Button size={buttonSize} className={cn(showIcon ? "gap-2" : "", className)}>
+          {showIcon && <Plus className="h-5 w-5" />}
+          {label}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">

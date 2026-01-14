@@ -47,7 +47,7 @@ Open `http://localhost:3000` in your browser.
 
 ### Create a presentation
 
-- From the dashboard, choose "Create presentation" to start a new deck.
+- From the homepage or dashboard, click "Create presentation" to start a new deck.
 - Rename the deck from the toolbar.
 - Add or duplicate slides as needed.
 
