@@ -48,10 +48,10 @@ export function PresentationList() {
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
-          <CreatePresentationDialog />
+          <CreatePresentationDialog buttonSize="sm" />
           <Button
             variant="outline"
-            size="lg"
+            size="sm"
             className="gap-2"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -82,13 +82,14 @@ export function PresentationList() {
         <div className="flex gap-3">
           <Button
             variant="outline"
+            size="sm"
             className="gap-2"
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload className="h-4 w-4" />
             Import
           </Button>
-          <CreatePresentationDialog />
+          <CreatePresentationDialog buttonSize="sm" />
           <input
             ref={fileInputRef}
             type="file"

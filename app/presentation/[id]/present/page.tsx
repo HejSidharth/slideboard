@@ -154,7 +154,12 @@ export default function PresentationModePage() {
       </div>
 
       {/* Persistent slide counter - always visible in bottom-right */}
-      <div className="absolute bottom-20 right-6 z-10">
+      <div className="absolute bottom-20 right-6 z-10 flex items-center gap-3">
+        <div className="flex items-center gap-1.5 text-white/70 text-xs">
+          <span>Press</span>
+          <kbd className="px-1.5 py-0.5 rounded bg-white/20 text-white font-mono text-xs">Esc</kbd>
+          <span>to exit</span>
+        </div>
         <div className="bg-black/60 text-white text-sm px-3 py-1.5 rounded-full font-medium backdrop-blur-sm">
           {currentIndex + 1} / {totalSlides}
         </div>
