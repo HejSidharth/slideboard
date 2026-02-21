@@ -1,301 +1,89 @@
 "use client";
 
-import { CreatePresentationDialog } from "@/components/dashboard/create-dialog";
-import ExcalidrawWrapper from "@/components/editor/excalidraw-wrapper";
-import { ThemeToggle } from "@/components/providers/theme-toggle";
-import type { ExcalidrawElement } from "@/types";
 import Link from "next/link";
-
-const heroElements: ExcalidrawElement[] = [
-  {
-    id: "slide-frame",
-    type: "rectangle",
-    x: 120,
-    y: 80,
-    width: 380,
-    height: 230,
-    angle: 0,
-    strokeColor: "#94a3b8",
-    backgroundColor: "transparent",
-    fillStyle: "hachure",
-    strokeWidth: 2,
-    strokeStyle: "solid",
-    roughness: 1,
-    opacity: 100,
-    groupIds: [],
-    roundness: null,
-    seed: 12839123,
-    version: 1,
-    versionNonce: 12839123,
-    isDeleted: false,
-    boundElements: null,
-    updated: 1,
-    link: null,
-    locked: false,
-  },
-  {
-    id: "editable-text",
-    type: "text",
-    x: 155,
-    y: 120,
-    width: 260,
-    height: 32,
-    angle: 0,
-    strokeColor: "#94a3b8",
-    backgroundColor: "transparent",
-    fillStyle: "hachure",
-    strokeWidth: 1,
-    strokeStyle: "solid",
-    roughness: 0,
-    opacity: 100,
-    groupIds: [],
-    roundness: null,
-    seed: 21839123,
-    version: 1,
-    versionNonce: 21839123,
-    isDeleted: false,
-    boundElements: null,
-    updated: 1,
-    link: null,
-    locked: false,
-    text: "Editable presentations",
-    fontSize: 20,
-    fontFamily: 1,
-    textAlign: "left",
-    verticalAlign: "top",
-    baseline: 18,
-    lineHeight: 1.2,
-  },
-  {
-    id: "divider-line",
-    type: "line",
-    x: 155,
-    y: 165,
-    width: 220,
-    height: 0,
-    angle: 0,
-    strokeColor: "#94a3b8",
-    backgroundColor: "transparent",
-    fillStyle: "hachure",
-    strokeWidth: 2,
-    strokeStyle: "solid",
-    roughness: 1,
-    opacity: 100,
-    groupIds: [],
-    roundness: null,
-    seed: 31839123,
-    version: 1,
-    versionNonce: 31839123,
-    isDeleted: false,
-    boundElements: null,
-    updated: 1,
-    link: null,
-    locked: false,
-    points: [
-      [0, 0],
-      [220, 0],
-    ],
-  },
-  {
-    id: "note-1",
-    type: "text",
-    x: 155,
-    y: 190,
-    width: 280,
-    height: 24,
-    angle: 0,
-    strokeColor: "#94a3b8",
-    backgroundColor: "transparent",
-    fillStyle: "hachure",
-    strokeWidth: 1,
-    strokeStyle: "solid",
-    roughness: 0,
-    opacity: 100,
-    groupIds: [],
-    roundness: null,
-    seed: 41839123,
-    version: 1,
-    versionNonce: 41839123,
-    isDeleted: false,
-    boundElements: null,
-    updated: 1,
-    link: null,
-    locked: false,
-    text: "Refine every slide in place",
-    fontSize: 16,
-    fontFamily: 1,
-    textAlign: "left",
-    verticalAlign: "top",
-    baseline: 14,
-    lineHeight: 1.2,
-  },
-  {
-    id: "arrow",
-    type: "arrow",
-    x: 155,
-    y: 230,
-    width: 180,
-    height: 60,
-    angle: 0,
-    strokeColor: "#94a3b8",
-    backgroundColor: "transparent",
-    fillStyle: "hachure",
-    strokeWidth: 2,
-    strokeStyle: "solid",
-    roughness: 1,
-    opacity: 100,
-    groupIds: [],
-    roundness: null,
-    seed: 51839123,
-    version: 1,
-    versionNonce: 51839123,
-    isDeleted: false,
-    boundElements: null,
-    updated: 1,
-    link: null,
-    locked: false,
-    points: [
-      [0, 0],
-      [180, 60],
-    ],
-    lastCommittedPoint: [180, 60],
-    startArrowhead: null,
-    endArrowhead: "arrow",
-  },
-  {
-    id: "edit-box",
-    type: "rectangle",
-    x: 360,
-    y: 250,
-    width: 110,
-    height: 48,
-    angle: 0,
-    strokeColor: "#94a3b8",
-    backgroundColor: "transparent",
-    fillStyle: "hachure",
-    strokeWidth: 2,
-    strokeStyle: "solid",
-    roughness: 1,
-    opacity: 100,
-    groupIds: [],
-    roundness: null,
-    seed: 61839123,
-    version: 1,
-    versionNonce: 61839123,
-    isDeleted: false,
-    boundElements: null,
-    updated: 1,
-    link: null,
-    locked: false,
-  },
-  {
-    id: "edit-text",
-    type: "text",
-    x: 378,
-    y: 264,
-    width: 74,
-    height: 20,
-    angle: 0,
-    strokeColor: "#94a3b8",
-    backgroundColor: "transparent",
-    fillStyle: "hachure",
-    strokeWidth: 1,
-    strokeStyle: "solid",
-    roughness: 0,
-    opacity: 100,
-    groupIds: [],
-    roundness: null,
-    seed: 71839123,
-    version: 1,
-    versionNonce: 71839123,
-    isDeleted: false,
-    boundElements: null,
-    updated: 1,
-    link: null,
-    locked: false,
-    text: "Edit",
-    fontSize: 16,
-    fontFamily: 1,
-    textAlign: "center",
-    verticalAlign: "middle",
-    baseline: 14,
-    lineHeight: 1.2,
-  },
-];
+import { Button } from "@/components/ui/button";
+import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <span className="text-xl font-semibold">SlideBoard</span>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground"
-            >
-              Dashboard
-            </Link>
-            <a
-              href="https://github.com/HejSidharth/slideboard"
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground"
-            >
-              GitHub
-            </a>
-            <ThemeToggle />
+    <div className="min-h-screen flex flex-col bg-background">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75 border-b border-border/70">
+        <div className="max-w-[760px] mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
+          <Link 
+            href="/" 
+            className="text-base md:text-lg font-medium tracking-tight hover:opacity-70 transition-opacity"
+          >
+            SlideBoard
+          </Link>
+          
+          <div className="flex items-center gap-3">
+            <AnimatedThemeToggler />
+            <Button asChild className="h-9 px-4 text-xs font-medium rounded-lg">
+              <Link href="/dashboard">Get Started</Link>
+            </Button>
           </div>
         </div>
       </header>
 
-      {/* Hero */}
-      <main className="container mx-auto px-4 py-12">
-        <section className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                Editable by design
-              </p>
-              <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight text-balance">
-                Create presentations that stay editable.
-              </h1>
-              <p className="text-lg text-muted-foreground max-w-xl">
-                SlideBoard keeps every slide as a living whiteboard so you can edit, refine, and
-                teach without rebuilding your deck.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              <CreatePresentationDialog
-                label="Create presentation"
-                showIcon={false}
-                className="px-6"
-              />
-              <p className="text-sm text-muted-foreground">
-                Slides save automatically in your browser.
-              </p>
-            </div>
-          </div>
-          <div className="rounded-2xl border bg-muted/30 p-4 shadow-sm">
-            <div className="h-[360px] w-full overflow-hidden rounded-xl border bg-background">
-              <ExcalidrawWrapper
-                initialElements={heroElements}
-                viewModeEnabled={false}
-                zenModeEnabled
-                gridModeEnabled={false}
-              />
+      <main className="flex-1 flex flex-col items-center justify-center pt-16">
+        <div className="max-w-[760px] w-full px-4 md:px-6">
+          <div className="pt-16 md:pt-20 pb-8">
+            <a 
+              href="https://hejamadi.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-full border border-border bg-secondary px-3 py-1 text-xs font-medium text-muted-foreground mb-6 hover:bg-muted hover:text-foreground transition-colors"
+            >
+              Made by Hejamadi
+            </a>
+            <h1 className="text-5xl lg:text-6xl font-semibold leading-[1.05] tracking-[-0.03em] text-balance mb-6">
+              Whiteboard lessons,{" "}
+              <span className="text-primary">reimagined</span>.
+            </h1>
+            
+            <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-[560px] mb-10">
+              Create interactive presentations that stay editable. 
+              Built for educators who want more than slides.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button asChild className="h-11 px-6 rounded-lg text-sm font-medium">
+                <Link href="/dashboard">Start creating</Link>
+              </Button>
+              <Button variant="outline" asChild className="h-11 px-6 rounded-lg text-sm font-medium">
+                <Link href="/dashboard">View Demo</Link>
+              </Button>
             </div>
           </div>
-        </section>
+
+          <div className="border-t border-border" />
+
+          <div className="pt-8 pb-14 md:pb-16">
+            <div className="grid md:grid-cols-3 gap-8 md:gap-10">
+              <div>
+                <h3 className="font-medium text-foreground mb-2 text-sm">Live Drawing</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Sketch, annotate, and edit in real-time. Every slide stays interactive.
+                </p>
+              </div>
+              <div>
+                <h3 className="font-medium text-foreground mb-2 text-sm">Local First</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Your data stays on your device. No accounts, no cloud, no compromises.
+                </p>
+              </div>
+              <div>
+                <h3 className="font-medium text-foreground mb-2 text-sm">Zero Setup</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Open and start creating. No installation, no configuration needed.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t mt-auto">
-        <div className="container mx-auto px-4 py-6 text-center text-sm text-muted-foreground">
-          <p>SlideBoard - Interactive whiteboard presentations for tutoring</p>
-        </div>
-      </footer>
+
     </div>
   );
 }

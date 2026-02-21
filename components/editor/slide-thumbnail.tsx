@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -23,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Copy, Trash2, Eraser, GripVertical } from "lucide-react";
+import { getSlidePreview } from "@/lib/slide-previews";
 import type { SlideData } from "@/types";
 
 interface SlideThumbnailProps {
@@ -36,6 +38,20 @@ interface SlideThumbnailProps {
   canDelete: boolean;
 }
 
+function countShapesInSnapshot(snapshot: SlideData["snapshot"]): number {
+  if (!snapshot || !snapshot.store) return 0;
+  let count = 0;
+  for (const key in snapshot.store) {
+    const record = (snapshot.store as unknown as Record<string, unknown>)[key];
+    if (record && typeof record === "object" && "typeName" in record) {
+      if ((record as { typeName: string }).typeName === "shape") {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 export function SlideThumbnail({
   slide,
   index,
@@ -47,6 +63,7 @@ export function SlideThumbnail({
   canDelete,
 }: SlideThumbnailProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const {
     attributes,
@@ -62,11 +79,33 @@ export function SlideThumbnail({
     transition,
   };
 
-  // Filter out deleted elements - Excalidraw marks deleted elements with isDeleted: true
-  const visibleElements = slide.elements.filter(
-    (el) => !el.isDeleted
-  );
-  const hasContent = visibleElements.length > 0;
+  const shapeCount = countShapesInSnapshot(slide.snapshot);
+  const hasContent = shapeCount > 0;
+
+  useEffect(() => {
+    let active = true;
+
+    const loadPreview = async () => {
+      const url = await getSlidePreview(slide.id);
+      if (!active) return;
+      setPreviewUrl(url);
+    };
+
+    void loadPreview();
+
+    const onPreviewUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ slideId: string }>;
+      if (customEvent.detail?.slideId !== slide.id) return;
+      void loadPreview();
+    };
+
+    window.addEventListener("slide-preview-updated", onPreviewUpdated as EventListener);
+
+    return () => {
+      active = false;
+      window.removeEventListener("slide-preview-updated", onPreviewUpdated as EventListener);
+    };
+  }, [slide.id]);
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -86,46 +125,53 @@ export function SlideThumbnail({
             ref={setNodeRef}
             style={style}
             className={cn(
-              "group relative rounded-lg border-2 bg-card cursor-pointer transition-all",
-              "hover:border-primary/50 hover:shadow-md",
+              "group relative cursor-pointer rounded-lg border bg-card transition-colors",
+              "hover:border-primary/50 hover:bg-secondary/70",
               isActive
-                ? "border-primary ring-2 ring-primary/20"
+                ? "border-primary bg-accent"
                 : "border-border",
-              isDragging && "opacity-50 shadow-lg"
+              isDragging && "opacity-50"
             )}
             onClick={onClick}
           >
-            {/* Drag Handle */}
-            <div
-              {...attributes}
-              {...listeners}
-              className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted"
-            >
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center justify-between border-b border-border/80 px-2 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <div
+                  {...attributes}
+                  {...listeners}
+                  className="cursor-grab rounded-sm p-1 text-muted-foreground transition-colors hover:bg-muted active:cursor-grabbing"
+                >
+                  <GripVertical className="h-3.5 w-3.5" />
+                </div>
+                <span className="rounded-sm border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  {index + 1}
+                </span>
+              </div>
+
+              {canDelete && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={handleDeleteClick}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
 
-            {/* Slide Number */}
-            <div className="absolute top-2 left-7 text-xs font-medium text-muted-foreground">
-              {index + 1}
-            </div>
-
-            {/* Delete Button */}
-            {canDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={handleDeleteClick}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
-
-            {/* Thumbnail Preview */}
-            <div className="aspect-video rounded-md m-2 ml-7 bg-background flex items-center justify-center overflow-hidden">
-              {hasContent ? (
+            <div className="relative m-2 aspect-video overflow-hidden rounded-md border border-border bg-background flex items-center justify-center">
+              {previewUrl ? (
+                <Image
+                  src={previewUrl}
+                  alt={`Slide ${index + 1} preview`}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : hasContent ? (
                 <div className="text-xs text-muted-foreground">
-                  {visibleElements.length} element{visibleElements.length !== 1 ? "s" : ""}
+                  {shapeCount} shape{shapeCount !== 1 ? "s" : ""}
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground/50">Empty</div>
@@ -155,13 +201,12 @@ export function SlideThumbnail({
         </ContextMenuContent>
       </ContextMenu>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Slide {index + 1}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The slide and all its contents will be permanently deleted.
+              This action cannot be undone. The slide and all of its content will be permanently removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

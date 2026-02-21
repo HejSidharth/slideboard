@@ -1,18 +1,25 @@
-// Re-export types from @excalidraw/excalidraw using correct import paths
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ExcalidrawElement = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any  
-export type BinaryFiles = Record<string, any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AppState = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ExcalidrawImperativeAPI = any;
+import type {
+  TLRecord,
+  TLShape,
+  TLShapeId,
+  TLStore,
+  Editor,
+  StoreSnapshot,
+} from "tldraw";
+
+export type { TLRecord, TLShape, TLShapeId, TLStore, Editor, StoreSnapshot };
 
 export interface SlideData {
   id: string;
-  elements: readonly ExcalidrawElement[];
-  appState: Partial<AppState>;
-  files: BinaryFiles;
+  snapshot: StoreSnapshot<TLRecord> | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  parentId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -20,39 +27,52 @@ export interface SlideData {
 export interface Presentation {
   id: string;
   name: string;
+  folderId: string | null;
   slides: SlideData[];
   currentSlideIndex: number;
   createdAt: number;
   updatedAt: number;
+  version: number;
 }
 
 export interface PresentationStore {
+  folders: Folder[];
   presentations: Presentation[];
   currentPresentationId: string | null;
-  
-  // Presentation CRUD
-  createPresentation: (name: string) => string;
+
+  createPresentation: (name: string, folderId?: string | null) => string;
   deletePresentation: (id: string) => void;
   renamePresentation: (id: string, name: string) => void;
+  movePresentationToFolder: (id: string, folderId: string | null) => void;
   duplicatePresentation: (id: string) => string;
   setCurrentPresentation: (id: string | null) => void;
   getCurrentPresentation: () => Presentation | null;
-  
-  // Slide operations
+
+  createFolder: (name: string, parentId?: string | null) => string;
+  renameFolder: (id: string, name: string) => void;
+  deleteFolder: (id: string) => void;
+
   addSlide: (presentationId: string) => void;
-  addSlideFromTemplate: (presentationId: string, templateId: string, values: Record<string, string>) => void;
   deleteSlide: (presentationId: string, slideIndex: number) => void;
   duplicateSlide: (presentationId: string, slideIndex: number) => void;
-  reorderSlides: (presentationId: string, fromIndex: number, toIndex: number) => void;
-  updateSlide: (presentationId: string, slideIndex: number, data: Partial<SlideData>) => void;
+  reorderSlides: (
+    presentationId: string,
+    fromIndex: number,
+    toIndex: number
+  ) => void;
+  updateSlide: (
+    presentationId: string,
+    slideIndex: number,
+    data: Partial<SlideData>
+  ) => void;
   clearSlide: (presentationId: string, slideIndex: number) => void;
-  
-  // Navigation
+
   setCurrentSlide: (presentationId: string, index: number) => void;
   goToNextSlide: (presentationId: string) => void;
   goToPreviousSlide: (presentationId: string) => void;
-  
-  // Export/Import
+
   exportPresentation: (id: string) => string;
   importPresentation: (data: string) => string | null;
 }
+
+export const CURRENT_SCHEMA_VERSION = 3;

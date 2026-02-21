@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+import { GeistPixelSquare } from "geist/font/pixel";
 import { Providers } from "@/components/providers/providers";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -14,8 +10,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SlideBoard - Whiteboard Presentations",
-  description: "A minimalistic slide deck where each slide is an Excalidraw whiteboard. Perfect for tutoring and teaching.",
+  title: "SlideBoard - Editable Whiteboard Decks",
+  description: "Build, edit, and present interactive whiteboard slides with a local-first SlideBoard workflow.",
 };
 
 export default function RootLayout({
@@ -26,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${GeistPixelSquare.className} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
         <Providers>

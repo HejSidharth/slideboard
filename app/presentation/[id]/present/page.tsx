@@ -7,9 +7,8 @@ import { usePresentationStore } from "@/store/use-presentation-store";
 import { Button } from "@/components/ui/button";
 import { X, ChevronLeft, ChevronRight, Expand, Shrink } from "lucide-react";
 
-// Dynamically import Excalidraw wrapper
-const ExcalidrawWrapper = dynamic(
-  () => import("@/components/editor/excalidraw-wrapper"),
+const TldrawWrapper = dynamic(
+  () => import("@/components/editor/tldraw-wrapper"),
   {
     ssr: false,
     loading: () => (
@@ -41,7 +40,25 @@ export default function PresentationModePage() {
   const canGoBack = currentIndex > 0;
   const canGoForward = currentIndex < totalSlides - 1;
 
-  // Keyboard navigation
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
+
+  const handleExit = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+    router.push(`/presentation/${presentationId}`);
+  }, [router, presentationId]);
+
+  useEffect(() => {
+    history.pushState(null, "", location.href);
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!presentation) return;
@@ -82,9 +99,8 @@ export default function PresentationModePage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [presentation, presentationId, goToNextSlide, goToPreviousSlide, setCurrentSlide]);
+  }, [presentation, presentationId, goToNextSlide, goToPreviousSlide, setCurrentSlide, handleExit, toggleFullscreen]);
 
-  // Auto-hide controls
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
 
@@ -95,7 +111,7 @@ export default function PresentationModePage() {
     };
 
     window.addEventListener("mousemove", handleMouseMove);
-    handleMouseMove(); // Initial trigger
+    handleMouseMove();
 
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
@@ -103,7 +119,6 @@ export default function PresentationModePage() {
     };
   }, []);
 
-  // Fullscreen handling
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -113,75 +128,65 @@ export default function PresentationModePage() {
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-    }
-  }, []);
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      history.pushState(null, "", location.href);
+    };
 
-  const handleExit = useCallback(() => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    }
-    router.push(`/presentation/${presentationId}`);
-  }, [router, presentationId]);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   if (!presentation || !currentSlide) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold mb-2">Presentation not found</h1>
-          <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
+          <h1 className="text-2xl font-semibold mb-2">Deck not found</h1>
+          <Button onClick={() => router.push("/dashboard")}>Return to Workspace</Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative h-screen w-screen bg-background overflow-hidden">
-      {/* Canvas */}
+    <div
+      className="relative h-screen w-screen bg-background overflow-hidden"
+      style={{ touchAction: "pan-y" }}
+    >
       <div className="absolute inset-0">
-        <ExcalidrawWrapper
+        <TldrawWrapper
           key={currentSlide.id}
-          initialElements={currentSlide.elements}
-          initialAppState={currentSlide.appState}
-          initialFiles={currentSlide.files}
-          viewModeEnabled={true}
-          zenModeEnabled={true}
+          slideId={currentSlide.id}
+          snapshot={currentSlide.snapshot}
+          isReadonly={true}
         />
       </div>
 
-      {/* Persistent slide counter - always visible in bottom-right */}
       <div className="absolute bottom-20 right-6 z-10 flex items-center gap-3">
-        <div className="flex items-center gap-1.5 text-white/70 text-xs">
+        <div className="flex items-center gap-1.5 text-xs text-white/80">
           <span>Press</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-white/20 text-white font-mono text-xs">Esc</kbd>
+          <kbd className="rounded border border-white/30 bg-black/50 px-1.5 py-0.5 font-mono text-xs text-white">Esc</kbd>
           <span>to exit</span>
         </div>
-        <div className="bg-black/60 text-white text-sm px-3 py-1.5 rounded-full font-medium backdrop-blur-sm">
+        <div className="rounded border border-white/20 bg-black/60 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
           {currentIndex + 1} / {totalSlides}
         </div>
       </div>
 
-      {/* Controls Overlay */}
       <div
         className={`absolute inset-x-0 bottom-0 transition-opacity duration-300 ${
           showControls ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
-        {/* Gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent pointer-events-none" />
 
-        {/* Controls */}
         <div className="relative flex items-center justify-between px-6 py-4">
-          {/* Left: Slide navigation */}
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="text-white border border-transparent hover:border-white/30 hover:bg-white/20"
               disabled={!canGoBack}
               onClick={() => goToPreviousSlide(presentationId)}
             >
@@ -193,7 +198,7 @@ export default function PresentationModePage() {
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="text-white border border-transparent hover:border-white/30 hover:bg-white/20"
               disabled={!canGoForward}
               onClick={() => goToNextSlide(presentationId)}
             >
@@ -201,19 +206,17 @@ export default function PresentationModePage() {
             </Button>
           </div>
 
-          {/* Center: Keyboard hints */}
-          <div className="hidden md:flex items-center gap-4 text-white/70 text-sm">
+          <div className="hidden items-center gap-4 text-sm text-white/72 md:flex">
             <span>← → Navigate</span>
             <span>F Fullscreen</span>
             <span>Esc Exit</span>
           </div>
 
-          {/* Right: Actions */}
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="text-white border border-transparent hover:border-white/30 hover:bg-white/20"
               onClick={toggleFullscreen}
             >
               {isFullscreen ? (
@@ -225,7 +228,7 @@ export default function PresentationModePage() {
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="text-white border border-transparent hover:border-white/30 hover:bg-white/20"
               onClick={handleExit}
             >
               <X className="h-5 w-5" />
@@ -234,7 +237,6 @@ export default function PresentationModePage() {
         </div>
       </div>
 
-      {/* Click areas for navigation */}
       <div className="absolute inset-0 flex pointer-events-none">
         <div
           className="w-1/4 h-full cursor-pointer pointer-events-auto"

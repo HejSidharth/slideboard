@@ -36,15 +36,14 @@ export function ApiKeyDialog({ open, onOpenChange, onSave }: ApiKeyDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Key className="h-5 w-5" />
-            OpenRouter API Key
-          </DialogTitle>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              OpenRouter API Key
+            </DialogTitle>
           <DialogDescription>
-            Enter your OpenRouter API key to use the AI assistant. Your key is
-            stored locally in your browser.
+            Enter your OpenRouter API key to enable SlideBoard Assistant. Your key stays stored locally in your browser.
           </DialogDescription>
         </DialogHeader>
 
@@ -64,12 +63,12 @@ export function ApiKeyDialog({ open, onOpenChange, onSave }: ApiKeyDialogProps) 
             className="flex items-center gap-1 text-sm text-primary hover:underline"
           >
             <ExternalLink className="h-3 w-3" />
-            Get a free API key from OpenRouter
+            Get an API key from OpenRouter
           </a>
 
           <p className="text-xs text-muted-foreground">
-            This app uses the free Mimo V2 Flash model. You can get started with
-            free credits on OpenRouter.
+            SlideBoard sends prompts directly from your browser to OpenRouter.
+            You can start with free credits.
           </p>
         </div>
 
@@ -78,7 +77,7 @@ export function ApiKeyDialog({ open, onOpenChange, onSave }: ApiKeyDialogProps) 
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={!key.trim() || isValidating}>
-            {isValidating ? "Validating..." : "Save Key"}
+            {isValidating ? "Validating..." : "Save API Key"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -80,7 +80,7 @@ export function useChat() {
           {
             role: "system",
             content:
-              "You are a helpful AI assistant for SlideBoard, a whiteboard presentation app for tutoring. Keep your answers concise and helpful. If asked about math, science, or educational topics, provide clear explanations.",
+              "You are SlideBoard Assistant for a whiteboard presentation app used by educators. Keep answers concise, practical, and classroom-friendly. Prefer clear steps, short examples, and accurate explanations.",
           },
           ...messages.map((m) => ({
             role: m.role as "user" | "assistant",

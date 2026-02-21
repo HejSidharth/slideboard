@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { usePresentationStore } from "@/store/use-presentation-store";
@@ -8,10 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ThemeToggle } from "@/components/providers/theme-toggle";
 import { SlideSidebar } from "@/components/editor/slide-sidebar";
 import { SlideControls } from "@/components/editor/slide-controls";
-import { ChatSheet } from "@/components/chat/chat-sheet";
+import { ChatPanel } from "@/components/chat/chat-panel";
 import {
   ArrowLeft,
   Play,
@@ -21,11 +20,10 @@ import {
   Check,
   X,
 } from "lucide-react";
-import type { ExcalidrawElement, BinaryFiles, AppState, ExcalidrawImperativeAPI } from "@/types";
+import type { StoreSnapshot, TLRecord } from "tldraw";
 
-// Dynamically import Excalidraw wrapper
-const ExcalidrawWrapper = dynamic(
-  () => import("@/components/editor/excalidraw-wrapper"),
+const TldrawWrapper = dynamic(
+  () => import("@/components/editor/tldraw-wrapper"),
   {
     ssr: false,
     loading: () => (
@@ -43,11 +41,15 @@ export default function PresentationEditorPage() {
   const params = useParams();
   const router = useRouter();
   const presentationId = params.id as string;
-  const excalidrawRef = useRef<ExcalidrawImperativeAPI | null>(null);
-
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("slideboard-assistant-open") !== "0";
+  });
+  const canvasRegionRef = useRef<HTMLDivElement | null>(null);
+  const wheelDebugCountRef = useRef(0);
 
   const presentation = usePresentationStore((s) =>
     s.presentations.find((p) => p.id === presentationId)
@@ -57,39 +59,17 @@ export default function PresentationEditorPage() {
   const addSlide = usePresentationStore((s) => s.addSlide);
   const exportPresentation = usePresentationStore((s) => s.exportPresentation);
 
-  // Debounce timer ref
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   const currentSlide = useMemo(() => {
     if (!presentation) return null;
     return presentation.slides[presentation.currentSlideIndex];
   }, [presentation]);
 
   const handleChange = useCallback(
-    (
-      elements: readonly ExcalidrawElement[],
-      appState: AppState,
-      files: BinaryFiles
-    ) => {
+    (snapshot: StoreSnapshot<TLRecord>) => {
       if (!presentation || !currentSlide) return;
-
-      // Debounce saves
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-
-      saveTimeoutRef.current = setTimeout(() => {
-        updateSlide(presentationId, presentation.currentSlideIndex, {
-          elements,
-          appState: {
-            scrollX: appState.scrollX,
-            scrollY: appState.scrollY,
-            zoom: appState.zoom,
-            viewBackgroundColor: appState.viewBackgroundColor,
-          },
-          files,
-        });
-      }, 300);
+      updateSlide(presentationId, presentation.currentSlideIndex, {
+        snapshot,
+      });
     },
     [presentation, currentSlide, presentationId, updateSlide]
   );
@@ -129,15 +109,92 @@ export default function PresentationEditorPage() {
     router.push(`/presentation/${presentationId}/present`);
   };
 
+  useEffect(() => {
+    localStorage.setItem("slideboard-assistant-open", assistantOpen ? "1" : "0");
+  }, [assistantOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isCmdJ = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j";
+      if (!isCmdJ) return;
+      event.preventDefault();
+      setAssistantOpen((open) => !open);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const canvasRegion = canvasRegionRef.current;
+    if (!canvasRegion) return;
+
+    const listenerOptions: AddEventListenerOptions = { passive: false, capture: true };
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!(event.target instanceof Node)) return;
+      if (!canvasRegion.contains(event.target)) return;
+
+      if (event.ctrlKey) return;
+
+      const horizontalDominant = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+      if (wheelDebugCountRef.current < 20) {
+        console.log("[editor-wheel]", {
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          cancelable: event.cancelable,
+          horizontalDominant,
+        });
+        wheelDebugCountRef.current += 1;
+      }
+
+      if (horizontalDominant && event.cancelable) {
+        console.log("[editor-wheel] preventDefault horizontal swipe");
+        event.preventDefault();
+      }
+    };
+
+    const handleGesture = (event: Event) => {
+      if (!(event.target instanceof Node)) return;
+      if (!canvasRegion.contains(event.target)) return;
+      console.log("[editor-gesture]", event.type);
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    const handlePopState = (event: PopStateEvent) => {
+      console.log("[editor-popstate] blocking browser back gesture", event.state);
+      history.pushState({ slideboardEditorGuard: true }, "", location.href);
+    };
+
+    document.documentElement.classList.add("editor-gesture-lock");
+    document.body.classList.add("editor-gesture-lock");
+    history.pushState({ slideboardEditorGuard: true }, "", location.href);
+    window.addEventListener("wheel", handleWheel, listenerOptions);
+    window.addEventListener("gesturestart", handleGesture, listenerOptions);
+    window.addEventListener("gesturechange", handleGesture, listenerOptions);
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      document.documentElement.classList.remove("editor-gesture-lock");
+      document.body.classList.remove("editor-gesture-lock");
+      window.removeEventListener("wheel", handleWheel, true);
+      window.removeEventListener("gesturestart", handleGesture, true);
+      window.removeEventListener("gesturechange", handleGesture, true);
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
   if (!presentation) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold mb-2">Presentation not found</h1>
+          <h1 className="text-2xl font-semibold mb-2">Deck not found</h1>
           <p className="text-muted-foreground mb-4">
-            This presentation may have been deleted or doesn't exist.
+            This SlideBoard deck may have been deleted or no longer exists.
           </p>
-          <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
+          <Button onClick={() => router.push("/dashboard")}>Return to Workspace</Button>
         </div>
       </div>
     );
@@ -145,8 +202,7 @@ export default function PresentationEditorPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      {/* Toolbar */}
-      <header className="flex h-14 items-center justify-between border-b px-4 shrink-0">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-5">
         <div className="flex items-center gap-3">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -159,7 +215,6 @@ export default function PresentationEditorPage() {
 
           <Separator orientation="vertical" className="h-6" />
 
-          {/* Presentation Name */}
           {isEditingName ? (
             <div className="flex items-center gap-2">
               <Input
@@ -169,7 +224,7 @@ export default function PresentationEditorPage() {
                   if (e.key === "Enter") handleSaveRename();
                   if (e.key === "Escape") handleCancelRename();
                 }}
-                className="h-8 w-48"
+                className="h-9 w-64"
                 autoFocus
               />
               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveRename}>
@@ -181,7 +236,7 @@ export default function PresentationEditorPage() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <h1 className="font-semibold truncate max-w-[200px]">{presentation.name}</h1>
+              <h1 className="max-w-[300px] truncate text-sm font-semibold tracking-tight md:text-base">{presentation.name}</h1>
               <Button
                 variant="ghost"
                 size="icon"
@@ -201,7 +256,7 @@ export default function PresentationEditorPage() {
                 <Plus className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Add Slide</TooltipContent>
+            <TooltipContent>Add slide</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -210,23 +265,27 @@ export default function PresentationEditorPage() {
                 <Download className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Export</TooltipContent>
+            <TooltipContent>Export deck</TooltipContent>
           </Tooltip>
 
           <Separator orientation="vertical" className="h-6" />
 
-          <ThemeToggle />
+          <Button
+            variant="outline"
+            className="h-9 px-3 text-xs"
+            onClick={() => setAssistantOpen((open) => !open)}
+          >
+            {assistantOpen ? "Hide Assistant" : "Show Assistant"}
+          </Button>
 
-          <Button onClick={handlePresent} className="gap-2">
+          <Button onClick={handlePresent} className="gap-2 px-5">
             <Play className="h-4 w-4" />
             Present
           </Button>
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Slide Sidebar */}
         <SlideSidebar
           presentation={presentation}
           presentationId={presentationId}
@@ -234,30 +293,32 @@ export default function PresentationEditorPage() {
           onCollapsedChange={setSidebarCollapsed}
         />
 
-        {/* Canvas Area */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 relative">
-            {currentSlide && (
-              <ExcalidrawWrapper
-                key={currentSlide.id}
-                initialElements={currentSlide.elements}
-                initialAppState={currentSlide.appState}
-                initialFiles={currentSlide.files}
+        <div className="flex flex-1 overflow-hidden">
+          <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div ref={canvasRegionRef} className="relative flex-1 overscroll-x-none">
+              {currentSlide && (
+                <TldrawWrapper
+                  key={currentSlide.id}
+                slideId={currentSlide.id}
+                snapshot={currentSlide.snapshot}
                 onChange={handleChange}
               />
-            )}
-          </div>
+              )}
+            </div>
 
-          {/* Slide Controls */}
-          <SlideControls
-            presentation={presentation}
-            presentationId={presentationId}
-          />
-        </main>
+            <SlideControls
+              presentation={presentation}
+              presentationId={presentationId}
+            />
+          </main>
+
+          {assistantOpen && (
+            <div className="w-[360px] shrink-0 border-l border-border bg-background">
+              <ChatPanel className="h-full" />
+            </div>
+          )}
+        </div>
       </div>
-
-      {/* AI Chat Sidebar */}
-      <ChatSheet />
     </div>
   );
 }

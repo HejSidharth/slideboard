@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MessageCircle, Settings, Trash2, X } from "lucide-react";
+import { MessageCircle, Settings, Trash2 } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
@@ -27,7 +27,6 @@ export function ChatSheet() {
     sendMessage,
     clearChat,
     setApiKey,
-    removeApiKey,
   } = useChat();
 
   const handleOpenChange = (open: boolean) => {
@@ -40,31 +39,28 @@ export function ChatSheet() {
 
   return (
     <>
-      {/* Floating trigger button */}
-      <div className="fixed right-4 top-1/2 -translate-y-1/2 z-40">
+      <div className="fixed bottom-5 right-5 z-40">
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="outline"
-              size="icon"
-              className="h-10 w-10 rounded-full shadow-lg bg-background border-2"
+              className="h-10 px-4"
               onClick={() => setIsOpen(true)}
             >
-              <MessageCircle className="h-5 w-5" />
+              Assistant
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="left">AI Assistant</TooltipContent>
+          <TooltipContent side="left">SlideBoard Assistant</TooltipContent>
         </Tooltip>
       </div>
 
-      {/* Chat Sheet */}
       <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-        <SheetContent className="w-[400px] sm:w-[450px] p-0 flex flex-col">
-          <SheetHeader className="p-4 border-b shrink-0">
+        <SheetContent className="flex w-[420px] flex-col p-0 sm:w-[480px]">
+          <SheetHeader className="shrink-0 border-b border-border p-4">
             <div className="flex items-center justify-between">
               <SheetTitle className="flex items-center gap-2">
                 <MessageCircle className="h-5 w-5" />
-                AI Assistant
+                SlideBoard Assistant
               </SheetTitle>
               <div className="flex items-center gap-1">
                 {messages.length > 0 && (
@@ -103,22 +99,22 @@ export function ChatSheet() {
 
           {/* Error banner */}
           {error && (
-            <div className="px-4 py-2 bg-destructive/10 border-b border-destructive/20">
+            <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2">
               <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
 
           {/* API Key prompt */}
           {!hasApiKey && (
-            <div className="p-4 bg-muted/50 border-b">
+            <div className="border-b border-border bg-secondary p-4">
               <p className="text-sm text-muted-foreground mb-2">
-                Set up your API key to start chatting with the AI assistant.
+                Add an OpenRouter API key to enable SlideBoard Assistant.
               </p>
               <Button
                 size="sm"
                 onClick={() => setShowApiKeyDialog(true)}
               >
-                Set API Key
+                Add API Key
               </Button>
             </div>
           )}
@@ -135,7 +131,6 @@ export function ChatSheet() {
         </SheetContent>
       </Sheet>
 
-      {/* API Key Dialog */}
       <ApiKeyDialog
         open={showApiKeyDialog}
         onOpenChange={setShowApiKeyDialog}

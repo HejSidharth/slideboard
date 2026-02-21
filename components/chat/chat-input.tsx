@@ -37,14 +37,14 @@ export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
   }, [input]);
 
   return (
-    <div className="p-4 border-t">
+    <div className="border-t border-border p-4">
       <div className="flex gap-2">
         <Textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "Set API key to start chatting..." : "Ask a question..."}
+          placeholder={disabled ? "Add API key to start..." : "Ask SlideBoard Assistant..."}
           disabled={isLoading || disabled}
           className="min-h-[40px] max-h-[120px] resize-none"
           rows={1}
@@ -59,7 +59,7 @@ export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground mt-2">
-        Press Enter to send, Shift+Enter for new line
+        Press Enter to send. Use Shift+Enter for a new line.
       </p>
     </div>
   );

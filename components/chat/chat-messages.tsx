@@ -27,9 +27,9 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="text-center text-muted-foreground">
           <Bot className="h-12 w-12 mx-auto mb-3 opacity-50" />
-          <p className="text-sm">Ask me anything!</p>
+          <p className="text-sm">Ask anything about your lesson.</p>
           <p className="text-xs mt-1 opacity-70">
-            I can help with questions while you teach.
+            I can help explain concepts, outline slides, and prep talking points.
           </p>
         </div>
       </div>
@@ -50,7 +50,7 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
             {/* Avatar */}
             <div
               className={cn(
-                "flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center",
+                "flex-shrink-0 w-7 h-7 border flex items-center justify-center",
                 message.role === "user"
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted"
@@ -66,7 +66,7 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
             {/* Message bubble */}
             <div
               className={cn(
-                "max-w-[85%] rounded-lg px-3 py-2 text-sm overflow-hidden",
+                "max-w-[85%] border px-3 py-2 text-sm overflow-hidden",
                 message.role === "user"
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted"
@@ -87,7 +87,7 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
                     blockquote: ({ children }) => (
                       <blockquote className="border-l-2 border-primary/50 pl-2 italic mb-2">{children}</blockquote>
                     ),
-                    code: ({ node, className, children, ...props }) => {
+                    code: ({ className, children, ...props }) => {
                       const match = /language-(\w+)/.exec(className || "");
                       const isInline = !match && !String(children).includes("\n");
                       return isInline ? (
@@ -95,7 +95,7 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
                           {children}
                         </code>
                       ) : (
-                        <div className="bg-background/50 rounded-md p-2 my-2 overflow-x-auto">
+                        <div className="bg-background/70 border p-2 my-2 overflow-x-auto">
                           <code className="text-xs font-mono block whitespace-pre" {...props}>
                             {children}
                           </code>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   DndContext,
   closestCenter,
@@ -17,7 +17,6 @@ import {
 } from "@dnd-kit/sortable";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { SlideThumbnail } from "./slide-thumbnail";
-import { TemplatePickerDialog } from "./template-picker-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -37,8 +36,7 @@ export function SlideSidebar({
   collapsed = false,
   onCollapsedChange,
 }: SlideSidebarProps) {
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
-  const addSlideFromTemplate = usePresentationStore((s) => s.addSlideFromTemplate);
+  const addSlide = usePresentationStore((s) => s.addSlide);
   const reorderSlides = usePresentationStore((s) => s.reorderSlides);
   const setCurrentSlide = usePresentationStore((s) => s.setCurrentSlide);
   const deleteSlide = usePresentationStore((s) => s.deleteSlide);
@@ -97,17 +95,10 @@ export function SlideSidebar({
     [presentationId, clearSlide]
   );
 
-  const handleSelectTemplate = useCallback(
-    (templateId: string, values: Record<string, string>) => {
-      addSlideFromTemplate(presentationId, templateId, values);
-    },
-    [presentationId, addSlideFromTemplate]
-  );
-
   // Collapsed state - show only expand button
   if (collapsed) {
     return (
-      <aside className="w-12 border-r flex flex-col items-center py-3 shrink-0 bg-muted/30 transition-all duration-200">
+      <aside className="w-12 shrink-0 border-r border-border bg-background py-3 transition-all duration-200 flex flex-col items-center">
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -127,9 +118,9 @@ export function SlideSidebar({
 
   // Expanded state - full sidebar
   return (
-    <aside className="w-64 border-r flex flex-col shrink-0 bg-muted/30 transition-all duration-200">
-      <div className="p-3 border-b flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">Slides</h2>
+    <aside className="w-72 shrink-0 border-r border-border bg-background transition-all duration-200 flex flex-col">
+      <div className="flex items-center justify-between border-b border-border p-3">
+        <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Slides</h2>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -174,20 +165,15 @@ export function SlideSidebar({
         </div>
       </ScrollArea>
 
-      <div className="p-3 border-t">
+      <div className="border-t border-border p-3">
         <Button
           variant="outline"
           className="w-full gap-2"
-          onClick={() => setTemplateDialogOpen(true)}
+          onClick={() => addSlide(presentationId)}
         >
           <Plus className="h-4 w-4" />
-          Add Slide
+          Add slide
         </Button>
-        <TemplatePickerDialog
-          open={templateDialogOpen}
-          onOpenChange={setTemplateDialogOpen}
-          onSelectTemplate={handleSelectTemplate}
-        />
       </div>
     </aside>
   );

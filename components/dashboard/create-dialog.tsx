@@ -22,24 +22,36 @@ interface CreatePresentationDialogProps {
   showIcon?: boolean;
   buttonSize?: "default" | "sm" | "lg" | "icon";
   className?: string;
+  folderId?: string | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }
 
 export function CreatePresentationDialog({
-  label = "New Presentation",
+  label = "New Deck",
   showIcon = true,
   buttonSize = "lg",
   className,
+  folderId = null,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: CreatePresentationDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [name, setName] = useState("");
   const router = useRouter();
   const createPresentation = usePresentationStore((s) => s.createPresentation);
 
+  const isControlled = open !== undefined;
+  const dialogOpen = isControlled ? open : internalOpen;
+  const setDialogOpen = onOpenChange ?? setInternalOpen;
+
   const handleCreate = () => {
     if (!name.trim()) return;
-    const id = createPresentation(name.trim());
+    const id = createPresentation(name.trim(), folderId);
     setName("");
-    setOpen(false);
+    setDialogOpen(false);
     router.push(`/presentation/${id}`);
   };
 
@@ -51,24 +63,26 @@ export function CreatePresentationDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size={buttonSize} className={cn(showIcon ? "gap-2" : "", className)}>
-          {showIcon && <Plus className="h-5 w-5" />}
-          {label}
-        </Button>
-      </DialogTrigger>
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          <Button size={buttonSize} className={cn(showIcon ? "gap-2" : "", className)}>
+            {showIcon && <Plus className="h-5 w-5" />}
+            {label}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create New Presentation</DialogTitle>
+          <DialogTitle>Create SlideBoard Deck</DialogTitle>
           <DialogDescription>
-            Give your presentation a name. You can always change it later.
+            Name your deck. You can rename it any time.
           </DialogDescription>
         </DialogHeader>
         <div className="py-4">
           <Input
             id="name"
-            placeholder="e.g., Math Lesson - Quadratics"
+            placeholder="e.g., Algebra Lesson - Quadratics"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -76,11 +90,11 @@ export function CreatePresentationDialog({
           />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => setDialogOpen(false)}>
             Cancel
           </Button>
           <Button onClick={handleCreate} disabled={!name.trim()}>
-            Create
+            Create Deck
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -21,7 +21,7 @@ export function SlideControls({ presentation, presentationId }: SlideControlsPro
   const canGoForward = currentIndex < totalSlides - 1;
 
   return (
-    <div className="h-12 border-t flex items-center justify-center gap-4 bg-muted/30 shrink-0">
+    <div className="flex h-12 shrink-0 items-center justify-center gap-4 border-t border-border bg-background">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -36,7 +36,7 @@ export function SlideControls({ presentation, presentationId }: SlideControlsPro
         <TooltipContent>Previous Slide</TooltipContent>
       </Tooltip>
 
-      <span className="text-sm font-medium min-w-[80px] text-center">
+      <span className="min-w-[90px] text-center text-sm font-medium text-muted-foreground">
         {currentIndex + 1} / {totalSlides}
       </span>
 
