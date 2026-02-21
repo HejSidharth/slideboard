@@ -144,3 +144,55 @@ body.editor-gesture-lock {
   animation: none;
   mix-blend-mode: normal;
 }
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-14px) scale(1.03);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 720ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.animate-fade-down {
+  animation: fade-down 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.animate-float-soft {
+  animation: float-soft 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-down,
+  .animate-float-soft {
+    animation: none !important;
+  }
+}

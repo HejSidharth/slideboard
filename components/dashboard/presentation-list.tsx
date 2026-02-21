@@ -30,6 +30,12 @@ const UNFILED_SCOPE = "unfiled";
 
 type FolderScope = typeof ALL_SCOPE | typeof UNFILED_SCOPE | string;
 
+function openAfterContextMenu(action: () => void): void {
+  requestAnimationFrame(() => {
+    action();
+  });
+}
+
 function collectDescendantIds(folders: FolderType[], folderId: string): Set<string> {
   const ids = new Set<string>([folderId]);
   let changed = true;
@@ -123,7 +129,9 @@ export function PresentationList() {
   const openCreateFolder = (parentId: string | null) => {
     setFolderParentId(parentId);
     setFolderName("");
-    setCreateFolderOpen(true);
+    openAfterContextMenu(() => {
+      setCreateFolderOpen(true);
+    });
   };
 
   const submitCreateFolder = () => {
@@ -146,7 +154,9 @@ export function PresentationList() {
   const openRenameFolder = (folder: FolderType) => {
     setRenameFolderId(folder.id);
     setFolderName(folder.name);
-    setRenameFolderOpen(true);
+    openAfterContextMenu(() => {
+      setRenameFolderOpen(true);
+    });
   };
 
   const deleteFolderWithScopeReset = (folderId: string) => {
@@ -170,19 +180,21 @@ export function PresentationList() {
             </Folder>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onClick={() => openCreateFolder(folder.id)}>New Folder</ContextMenuItem>
+          <ContextMenuContent>
+          <ContextMenuItem onSelect={() => openCreateFolder(folder.id)}>New Folder</ContextMenuItem>
           <ContextMenuItem
-            onClick={() => {
+            onSelect={() => {
               setCreateDeckFolderId(folder.id);
-              setCreateDeckOpen(true);
+              openAfterContextMenu(() => {
+                setCreateDeckOpen(true);
+              });
             }}
           >
             New Deck
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onClick={() => openRenameFolder(folder)}>Rename Folder</ContextMenuItem>
-          <ContextMenuItem variant="destructive" onClick={() => deleteFolderWithScopeReset(folder.id)}>
+          <ContextMenuItem onSelect={() => openRenameFolder(folder)}>Rename Folder</ContextMenuItem>
+          <ContextMenuItem variant="destructive" onSelect={() => deleteFolderWithScopeReset(folder.id)}>
             Delete Folder
           </ContextMenuItem>
         </ContextMenuContent>
@@ -247,11 +259,13 @@ export function PresentationList() {
             </aside>
           </ContextMenuTrigger>
           <ContextMenuContent>
-            <ContextMenuItem onClick={() => openCreateFolder(null)}>New Folder</ContextMenuItem>
+            <ContextMenuItem onSelect={() => openCreateFolder(null)}>New Folder</ContextMenuItem>
             <ContextMenuItem
-              onClick={() => {
+              onSelect={() => {
                 setCreateDeckFolderId(currentFolderId);
-                setCreateDeckOpen(true);
+                openAfterContextMenu(() => {
+                  setCreateDeckOpen(true);
+                });
               }}
             >
               New Deck
