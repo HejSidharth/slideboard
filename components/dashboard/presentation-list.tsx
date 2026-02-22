@@ -21,7 +21,13 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { FileText, Upload } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, FileText, Plus, Upload } from "lucide-react";
 import { File, Folder, Tree } from "@/components/ui/file-tree";
 import type { Folder as FolderType } from "@/types";
 
@@ -29,6 +35,7 @@ const ALL_SCOPE = "all";
 const UNFILED_SCOPE = "unfiled";
 
 type FolderScope = typeof ALL_SCOPE | typeof UNFILED_SCOPE | string;
+type SortBy = "updated" | "created" | "name";
 
 function openAfterContextMenu(action: () => void): void {
   requestAnimationFrame(() => {
@@ -63,6 +70,8 @@ export function PresentationList() {
   const deleteFolder = usePresentationStore((s) => s.deleteFolder);
 
   const [scope, setScope] = useState<FolderScope>(ALL_SCOPE);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortBy>("updated");
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [renameFolderOpen, setRenameFolderOpen] = useState(false);
   const [createDeckOpen, setCreateDeckOpen] = useState(false);
@@ -76,6 +85,13 @@ export function PresentationList() {
     () => folders.find((folder) => folder.id === scope) ?? null,
     [folders, scope],
   );
+
+  const scopeLabel =
+    scope === ALL_SCOPE
+      ? "All Decks"
+      : scope === UNFILED_SCOPE
+        ? "Unfiled"
+        : selectedFolder?.name ?? "Folder";
 
   const childrenMap = useMemo(() => {
     const map = new Map<string | null, FolderType[]>();
@@ -91,7 +107,7 @@ export function PresentationList() {
     return map;
   }, [folders]);
 
-  const filteredPresentations = useMemo(() => {
+  const scopedPresentations = useMemo(() => {
     if (scope === ALL_SCOPE) return presentations;
     if (scope === UNFILED_SCOPE) return presentations.filter((presentation) => !presentation.folderId);
     const descendants = collectDescendantIds(folders, scope);
@@ -100,10 +116,24 @@ export function PresentationList() {
     );
   }, [scope, folders, presentations]);
 
-  const sortedPresentations = useMemo(
-    () => [...filteredPresentations].sort((a, b) => b.updatedAt - a.updatedAt),
-    [filteredPresentations],
-  );
+  const searchedPresentations = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return scopedPresentations;
+    return scopedPresentations.filter((presentation) =>
+      presentation.name.toLowerCase().includes(query),
+    );
+  }, [scopedPresentations, searchQuery]);
+
+  const sortedPresentations = useMemo(() => {
+    const decks = [...searchedPresentations];
+    if (sortBy === "name") {
+      return decks.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    if (sortBy === "created") {
+      return decks.sort((a, b) => b.createdAt - a.createdAt);
+    }
+    return decks.sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [searchedPresentations, sortBy]);
 
   const currentFolderId = scope !== ALL_SCOPE && scope !== UNFILED_SCOPE ? scope : null;
 
@@ -124,6 +154,13 @@ export function PresentationList() {
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const openCreateDeck = (folderId: string | null) => {
+    setCreateDeckFolderId(folderId);
+    openAfterContextMenu(() => {
+      setCreateDeckOpen(true);
+    });
   };
 
   const openCreateFolder = (parentId: string | null) => {
@@ -180,18 +217,9 @@ export function PresentationList() {
             </Folder>
           </div>
         </ContextMenuTrigger>
-          <ContextMenuContent>
+        <ContextMenuContent>
           <ContextMenuItem onSelect={() => openCreateFolder(folder.id)}>New Folder</ContextMenuItem>
-          <ContextMenuItem
-            onSelect={() => {
-              setCreateDeckFolderId(folder.id);
-              openAfterContextMenu(() => {
-                setCreateDeckOpen(true);
-              });
-            }}
-          >
-            New Deck
-          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => openCreateDeck(folder.id)}>New Deck</ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => openRenameFolder(folder)}>Rename Folder</ContextMenuItem>
           <ContextMenuItem variant="destructive" onSelect={() => deleteFolderWithScopeReset(folder.id)}>
@@ -204,93 +232,122 @@ export function PresentationList() {
 
   return (
     <div>
-      <div className="mb-7 flex flex-col items-start justify-between gap-4 rounded-xl border border-border bg-card px-4 py-3 sm:flex-row sm:items-center">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
-            {scope === ALL_SCOPE ? "All Decks" : scope === UNFILED_SCOPE ? "Unfiled Decks" : selectedFolder?.name ?? "Your Decks"}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {filteredPresentations.length} {filteredPresentations.length === 1 ? "deck" : "decks"}
-          </p>
+      <div className="mb-6 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground">Workspace / {scopeLabel}</p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight">Decks</h2>
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="h-9 gap-1.5 px-3 text-xs">
+                <Plus className="h-4 w-4" />
+                Create
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => openCreateDeck(currentFolderId)}>New Deck</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openCreateFolder(currentFolderId)}>New Folder</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" />
+                Import Deck
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Button
-            variant="outline"
-            size="default"
-            className="gap-2"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="h-4 w-4" />
-            Import Deck
-          </Button>
-          <CreatePresentationDialog
-            label="New Deck"
-            showIcon={false}
-            buttonSize="default"
-            folderId={currentFolderId}
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search decks..."
+            className="h-9 sm:max-w-xs"
           />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,.slideboard.json"
-            className="hidden"
-            onChange={handleImport}
-          />
+
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="h-9 gap-1.5 px-3 text-xs">
+                  Sort: {sortBy === "updated" ? "Last edited" : sortBy === "created" ? "Created" : "Name"}
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setSortBy("updated")}>Last edited</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setSortBy("created")}>Created</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setSortBy("name")}>Name</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <p className="text-xs text-muted-foreground">
+              {sortedPresentations.length} {sortedPresentations.length === 1 ? "deck" : "decks"}
+            </p>
+          </div>
         </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,.slideboard.json"
+          className="hidden"
+          onChange={handleImport}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <aside className="rounded-xl border border-border bg-card p-3">
+              <p className="mb-2 text-xs text-muted-foreground">Views</p>
+              <Tree selectedId={scope} onSelectChange={setScope}>
+                <File value={ALL_SCOPE}>All Decks</File>
+                <File value={UNFILED_SCOPE}>Unfiled</File>
+              </Tree>
+
+              <div className="my-3 border-t border-border/70" />
+
               <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">Library</p>
-                <Button size="sm" variant="outline" className="h-8 px-3 text-xs" onClick={() => openCreateFolder(null)}>
+                <p className="text-xs text-muted-foreground">Folders</p>
+                <Button size="sm" variant="outline" className="h-8 px-3 text-xs" onClick={() => openCreateFolder(currentFolderId)}>
                   New Folder
                 </Button>
               </div>
 
               <Tree selectedId={scope} onSelectChange={setScope} initialExpandedItems={folders.map((folder) => folder.id)}>
-                <File value={ALL_SCOPE}>All Decks</File>
-                <File value={UNFILED_SCOPE}>Unfiled</File>
                 {renderFolderNodes(null)}
               </Tree>
             </aside>
           </ContextMenuTrigger>
           <ContextMenuContent>
-            <ContextMenuItem onSelect={() => openCreateFolder(null)}>New Folder</ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                setCreateDeckFolderId(currentFolderId);
-                openAfterContextMenu(() => {
-                  setCreateDeckOpen(true);
-                });
-              }}
-            >
-              New Deck
-            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => openCreateFolder(currentFolderId)}>New Folder</ContextMenuItem>
+            <ContextMenuItem onSelect={() => openCreateDeck(currentFolderId)}>New Deck</ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
 
         <section>
-        {sortedPresentations.length === 0 ? (
-          <div className="flex min-h-[36vh] flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-10 text-center">
-            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-lg border border-border bg-secondary">
-              <FileText className="h-7 w-7 text-muted-foreground" />
+          {sortedPresentations.length === 0 ? (
+            <div className="flex min-h-[36vh] flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-10 text-center">
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-lg border border-border bg-secondary">
+                <FileText className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <h3 className="text-xl font-semibold tracking-tight">
+                {searchQuery.trim() ? "No matching decks" : "No decks here yet"}
+              </h3>
+              <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+                {searchQuery.trim()
+                  ? "Try a different deck name or clear your search."
+                  : "Create a deck in this view or import an existing SlideBoard file."}
+              </p>
             </div>
-            <h3 className="text-xl font-semibold tracking-tight">No decks here yet</h3>
-            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-              Create a deck in this view or import an existing SlideBoard file.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {sortedPresentations.map((presentation) => (
-              <PresentationCard key={presentation.id} presentation={presentation} />
-            ))}
-          </div>
-        )}
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {sortedPresentations.map((presentation) => (
+                <PresentationCard key={presentation.id} presentation={presentation} />
+              ))}
+            </div>
+          )}
         </section>
       </div>
 

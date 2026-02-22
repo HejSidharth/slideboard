@@ -34,6 +34,7 @@ interface ExcalidrawWrapperProps {
     appState: AppState,
     files: BinaryFiles,
   ) => void;
+  onReady?: (api: unknown) => void;
   isReadonly?: boolean;
 }
 
@@ -52,6 +53,7 @@ export default function ExcalidrawWrapper({
   initialAppState = {},
   initialFiles = {},
   onChange,
+  onReady,
   isReadonly = false,
 }: ExcalidrawWrapperProps) {
   const { resolvedTheme } = useTheme();
@@ -77,6 +79,7 @@ export default function ExcalidrawWrapper({
     <div className="h-full w-full">
       <ExcalidrawComponent
         initialData={initialData}
+        excalidrawAPI={onReady}
         onChange={handleChange}
         theme={resolvedTheme === "dark" ? "dark" : "light"}
         viewModeEnabled={isReadonly}

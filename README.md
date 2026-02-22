@@ -72,7 +72,7 @@ The chat assistant uses OpenRouter through a server-side API route.
 
 1. Copy `.env.example` to `.env.local`.
 2. Set `OPENROUTER_API_KEY` in `.env.local`.
-3. (Optional) Change `OPENROUTER_MODEL` from `openrouter/free`.
+3. Set `OPENROUTER_MODEL` in `.env.local` (for example, your preferred free model id).
 
 ## Build
 

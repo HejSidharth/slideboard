@@ -1,7 +1,6 @@
 "use client";
 
 import { PresentationList } from "@/components/dashboard/presentation-list";
-import { CreatePresentationDialog } from "@/components/dashboard/create-dialog";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { Github } from "lucide-react";
 import Link from "next/link";
@@ -25,26 +24,11 @@ export default function DashboardPage() {
               <Github className="h-4 w-4" />
             </a>
             <AnimatedThemeToggler />
-            <CreatePresentationDialog
-              label="New"
-              showIcon={true}
-              buttonSize="sm"
-              className="h-8 gap-1 px-2.5 text-[11px] font-medium md:h-9 md:px-4 md:text-xs"
-            />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[760px] px-4 md:px-6 py-10">
-        <section className="mb-10 border-b border-border pb-8">
-          <p className="text-xs text-muted-foreground">Workspace</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-            Build editable decks.
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm text-muted-foreground md:text-base">
-            Create, duplicate, import, and present with a clean local-first workflow.
-          </p>
-        </section>
+      <main className="mx-auto w-full max-w-[760px] px-4 py-6 md:px-6 md:py-8">
         <PresentationList />
       </main>
     </div>

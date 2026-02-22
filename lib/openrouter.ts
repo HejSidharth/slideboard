@@ -1,4 +1,4 @@
-const OPENROUTER_PROXY_URL = "/api/openrouter/free";
+const OPENROUTER_PROXY_URL = "/api/openrouter/chat";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";

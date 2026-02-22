@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "openrouter/free";
 
 interface OpenRouterRequestMessage {
   role: "user" | "assistant" | "system";
@@ -15,10 +14,18 @@ interface RequestBody {
 
 export async function POST(request: Request) {
   const apiKey = process.env.OPENROUTER_API_KEY;
+  const model = process.env.OPENROUTER_MODEL;
 
   if (!apiKey) {
     return NextResponse.json(
       { error: "OPENROUTER_API_KEY is missing on the server." },
+      { status: 500 },
+    );
+  }
+
+  if (!model) {
+    return NextResponse.json(
+      { error: "OPENROUTER_MODEL is missing on the server." },
       { status: 500 },
     );
   }
@@ -38,14 +45,14 @@ export async function POST(request: Request) {
   }
 
   const stream = body.stream === true;
-  const model = process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL;
+  const origin = request.headers.get("origin") ?? new URL(request.url).origin;
 
   const upstream = await fetch(OPENROUTER_API_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+      "HTTP-Referer": origin,
       "X-Title": "SlideBoard",
     },
     body: JSON.stringify({

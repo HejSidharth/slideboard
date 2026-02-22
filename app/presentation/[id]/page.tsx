@@ -29,8 +29,15 @@ import {
   Download,
   Pencil,
   Calculator,
+  ImageDown,
 } from "lucide-react";
-import type { AppState, BinaryFiles, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
+import type { AppState, BinaryFiles, Editor, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
+
+interface ExcalidrawApiLike {
+  getSceneElements: () => readonly ExcalidrawElement[];
+  getAppState: () => AppState;
+  getFiles: () => BinaryFiles;
+}
 
 const TldrawWrapper = dynamic(
   () => import("@/components/editor/tldraw-wrapper"),
@@ -85,6 +92,10 @@ export default function PresentationEditorPage() {
   const canvasRegionRef = useRef<HTMLDivElement | null>(null);
   const wheelDebugCountRef = useRef(0);
   const excalidrawSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tldrawEditorRef = useRef<Editor | null>(null);
+  const excalidrawApiRef = useRef<ExcalidrawApiLike | null>(null);
+  const calculatorModeRef = useRef(calculatorMode);
+  const calculatorOpenRef = useRef(calculatorOpen);
 
   const presentation = usePresentationStore((s) =>
     s.presentations.find((p) => p.id === presentationId)
@@ -197,6 +208,126 @@ export default function PresentationEditorPage() {
     router.push(`/presentation/${presentationId}/present`);
   };
 
+  const downloadBlob = useCallback((blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const roundedBlob = useCallback(async (blob: Blob, radius = 18): Promise<Blob> => {
+    const source = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      source.close();
+      return blob;
+    }
+
+    const clampedRadius = Math.min(radius, Math.floor(Math.min(canvas.width, canvas.height) / 2));
+
+    context.beginPath();
+    context.moveTo(clampedRadius, 0);
+    context.lineTo(canvas.width - clampedRadius, 0);
+    context.quadraticCurveTo(canvas.width, 0, canvas.width, clampedRadius);
+    context.lineTo(canvas.width, canvas.height - clampedRadius);
+    context.quadraticCurveTo(canvas.width, canvas.height, canvas.width - clampedRadius, canvas.height);
+    context.lineTo(clampedRadius, canvas.height);
+    context.quadraticCurveTo(0, canvas.height, 0, canvas.height - clampedRadius);
+    context.lineTo(0, clampedRadius);
+    context.quadraticCurveTo(0, 0, clampedRadius, 0);
+    context.closePath();
+    context.clip();
+    context.drawImage(source, 0, 0);
+    source.close();
+
+    return new Promise((resolve) => {
+      canvas.toBlob((nextBlob) => resolve(nextBlob ?? blob), "image/png", 1);
+    });
+  }, []);
+
+  const handleDownloadSlideImage = useCallback(async () => {
+    if (!presentation || !currentSlide) return;
+
+    try {
+      const fileName = `${presentation.name.replace(/[^a-z0-9]/gi, "_")}-slide-${presentation.currentSlideIndex + 1}.png`;
+
+      if (presentation.canvasEngine === "tldraw") {
+        const editor = tldrawEditorRef.current;
+        if (!editor) return;
+
+        const shapeIds = [...editor.getCurrentPageShapeIds()];
+        if (shapeIds.length === 0) return;
+
+        const image = await editor.toImage(shapeIds, {
+          format: "png",
+          background: true,
+          padding: 48,
+          pixelRatio: 2,
+        });
+
+        const blob = await roundedBlob(image.blob);
+        downloadBlob(blob, fileName);
+        return;
+      }
+
+      const api = excalidrawApiRef.current;
+      if (!api) return;
+
+      const elements = api.getSceneElements();
+      if (elements.length === 0) return;
+      const appState = api.getAppState();
+
+      const { exportToBlob } = await import("@excalidraw/excalidraw");
+      const blob = await exportToBlob({
+        elements,
+        appState: {
+          ...appState,
+          exportBackground: true,
+          viewBackgroundColor: appState.viewBackgroundColor ?? "#ffffff",
+        },
+        files: api.getFiles(),
+        mimeType: "image/png",
+        exportPadding: 48,
+      });
+
+      const finalBlob = await roundedBlob(blob);
+      downloadBlob(finalBlob, fileName);
+    } catch (error) {
+      console.error("Failed to export slide image", error);
+    }
+  }, [currentSlide, downloadBlob, presentation, roundedBlob]);
+
+  const toggleAssistant = useCallback(() => {
+    setAssistantOpen((open) => {
+      const nextOpen = !open;
+      if (nextOpen && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
+        setCalculatorOpen(false);
+      }
+      return nextOpen;
+    });
+  }, []);
+
+  const toggleCalculator = useCallback(() => {
+    setCalculatorOpen((open) => {
+      const nextOpen = !open;
+      if (nextOpen && calculatorModeRef.current === "sheet") {
+        setAssistantOpen(false);
+      }
+      return nextOpen;
+    });
+  }, []);
+
+  useEffect(() => {
+    calculatorModeRef.current = calculatorMode;
+    calculatorOpenRef.current = calculatorOpen;
+  }, [calculatorMode, calculatorOpen]);
+
   useEffect(() => {
     localStorage.setItem("slideboard-assistant-open", assistantOpen ? "1" : "0");
   }, [assistantOpen]);
@@ -214,7 +345,13 @@ export default function PresentationEditorPage() {
       const isCmdJ = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j";
       if (!isCmdJ) return;
       event.preventDefault();
-      setAssistantOpen((open) => !open);
+      setAssistantOpen((open) => {
+        const nextOpen = !open;
+        if (nextOpen && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
+          setCalculatorOpen(false);
+        }
+        return nextOpen;
+      });
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -348,15 +485,7 @@ export default function PresentationEditorPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => {
-                  setCalculatorOpen((open) => {
-                    const nextOpen = !open;
-                    if (nextOpen && calculatorMode === "sheet") {
-                      setAssistantOpen(false);
-                    }
-                    return nextOpen;
-                  });
-                }}
+                onClick={toggleCalculator}
               >
                 <Calculator className="h-4 w-4" />
               </Button>
@@ -370,12 +499,21 @@ export default function PresentationEditorPage() {
             </TooltipContent>
           </Tooltip>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={handleDownloadSlideImage}>
+                <ImageDown className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Download slide image</TooltipContent>
+          </Tooltip>
+
           <Separator orientation="vertical" className="h-6" />
 
           <Button
             variant="outline"
             className="h-9 px-3 text-xs"
-            onClick={() => setAssistantOpen((open) => !open)}
+            onClick={toggleAssistant}
           >
             {assistantOpen ? "Hide Assistant" : "Show Assistant"}
           </Button>
@@ -406,6 +544,9 @@ export default function PresentationEditorPage() {
                     initialAppState={currentSlide.engine === "excalidraw" ? currentSlide.appState : {}}
                     initialFiles={currentSlide.engine === "excalidraw" ? currentSlide.files : {}}
                     onChange={handleExcalidrawChange}
+                    onReady={(api) => {
+                      excalidrawApiRef.current = api as ExcalidrawApiLike;
+                    }}
                   />
                 ) : (
                   <TldrawWrapper
@@ -413,6 +554,9 @@ export default function PresentationEditorPage() {
                     slideId={currentSlide.id}
                     snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
                     onChange={handleChange}
+                    onReady={(editor) => {
+                      tldrawEditorRef.current = editor;
+                    }}
                   />
                 )
               )}

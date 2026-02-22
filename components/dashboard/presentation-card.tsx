@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { formatDistanceToNow } from "@/lib/date-utils";
+import { getSlidePreview } from "@/lib/slide-previews";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,13 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  MoreVertical,
-  Pencil,
-  Copy,
-  Trash2,
-  Download,
-} from "lucide-react";
+import { MoreVertical, Pencil, Copy, Trash2, Download } from "lucide-react";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import type { Folder, Presentation as PresentationType } from "@/types";
 
@@ -43,6 +39,7 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [newName, setNewName] = useState(presentation.name);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const {
     folders,
@@ -69,6 +66,35 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
 
     return segments.join(" / ");
   };
+
+  const firstSlideId = presentation.slides[0]?.id;
+
+  useEffect(() => {
+    if (!firstSlideId) return;
+
+    let active = true;
+
+    const loadPreview = async () => {
+      const url = await getSlidePreview(firstSlideId);
+      if (!active) return;
+      setPreviewUrl(url);
+    };
+
+    void loadPreview();
+
+    const onPreviewUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ slideId: string }>;
+      if (customEvent.detail?.slideId !== firstSlideId) return;
+      void loadPreview();
+    };
+
+    window.addEventListener("slide-preview-updated", onPreviewUpdated as EventListener);
+
+    return () => {
+      active = false;
+      window.removeEventListener("slide-preview-updated", onPreviewUpdated as EventListener);
+    };
+  }, [firstSlideId]);
 
   const handleOpen = () => {
     router.push(`/presentation/${presentation.id}`);
@@ -104,88 +130,111 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
   };
 
   const slideCount = presentation.slides.length;
+  const folderPath = (() => {
+    if (!presentation.folderId) return "Unfiled";
+    const folder = folders.find((candidate) => candidate.id === presentation.folderId);
+    return folder ? getFolderPath(folder) : "Unfiled";
+  })();
 
   return (
     <>
       <Card
-        className="group cursor-pointer border-border py-0 transition-colors hover:border-primary/40"
+        className="group cursor-pointer overflow-hidden border-border py-0 transition-colors hover:border-primary/40"
         onClick={handleOpen}
       >
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <h3 className="truncate text-sm font-semibold tracking-tight md:text-base">{presentation.name}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Updated {formatDistanceToNow(presentation.updatedAt)}
-              </p>
-            </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 opacity-65 transition-opacity group-hover:opacity-100"
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                <DropdownMenuItem onClick={() => setRenameOpen(true)}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDuplicate}>
-                  <Copy className="mr-2 h-4 w-4" />
-                  Duplicate
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleExport}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export
-                </DropdownMenuItem>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Move to folder</DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuItem onClick={() => movePresentationToFolder(presentation.id, null)}>
-                      Unfiled
-                    </DropdownMenuItem>
-                    {folders.length === 0 ? (
-                      <DropdownMenuItem disabled>No folders</DropdownMenuItem>
-                    ) : (
-                      folders
-                        .slice()
-                        .sort((a, b) => getFolderPath(a).localeCompare(getFolderPath(b)))
-                        .map((folder) => (
-                          <DropdownMenuItem
-                            key={folder.id}
-                            onClick={() => movePresentationToFolder(presentation.id, folder.id)}
-                          >
-                            {getFolderPath(folder)}
-                          </DropdownMenuItem>
-                        ))
-                    )}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => setDeleteOpen(true)}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+        <CardContent className="p-0">
+          <div className="relative aspect-video border-b border-border bg-secondary/30">
+            {previewUrl ? (
+              <Image
+                src={previewUrl}
+                alt={`${presentation.name} preview`}
+                fill
+                unoptimized
+                className="object-cover"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                No preview yet
+              </div>
+            )}
           </div>
 
-          <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
-            <span>{slideCount} {slideCount === 1 ? "slide" : "slides"}</span>
-            <span>Open deck</span>
+          <div className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-sm font-semibold tracking-tight md:text-base">{presentation.name}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Updated {formatDistanceToNow(presentation.updatedAt)}
+                </p>
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-65 transition-opacity group-hover:opacity-100"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={() => setRenameOpen(true)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDuplicate}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExport}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export
+                  </DropdownMenuItem>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>Move to folder</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuItem onClick={() => movePresentationToFolder(presentation.id, null)}>
+                        Unfiled
+                      </DropdownMenuItem>
+                      {folders.length === 0 ? (
+                        <DropdownMenuItem disabled>No folders</DropdownMenuItem>
+                      ) : (
+                        folders
+                          .slice()
+                          .sort((a, b) => getFolderPath(a).localeCompare(getFolderPath(b)))
+                          .map((folder) => (
+                            <DropdownMenuItem
+                              key={folder.id}
+                              onClick={() => movePresentationToFolder(presentation.id, folder.id)}
+                            >
+                              {getFolderPath(folder)}
+                            </DropdownMenuItem>
+                          ))
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setDeleteOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{slideCount} {slideCount === 1 ? "slide" : "slides"}</span>
+              <span>•</span>
+              <span className="max-w-[170px] truncate">{folderPath}</span>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Rename Dialog */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -211,7 +260,6 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
