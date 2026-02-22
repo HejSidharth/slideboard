@@ -6,6 +6,14 @@ import dynamic from "next/dynamic";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlideSidebar } from "@/components/editor/slide-sidebar";
@@ -17,8 +25,6 @@ import {
   Plus,
   Download,
   Pencil,
-  Check,
-  X,
 } from "lucide-react";
 import type { AppState, BinaryFiles, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
 
@@ -56,7 +62,7 @@ export default function PresentationEditorPage() {
   const params = useParams();
   const router = useRouter();
   const presentationId = params.id as string;
-  const [isEditingName, setIsEditingName] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState<boolean>(() => {
@@ -132,19 +138,21 @@ export default function PresentationEditorPage() {
   const handleStartRename = () => {
     if (!presentation) return;
     setEditedName(presentation.name);
-    setIsEditingName(true);
+    setRenameDialogOpen(true);
   };
 
   const handleSaveRename = () => {
     if (editedName.trim() && presentation) {
       renamePresentation(presentationId, editedName.trim());
     }
-    setIsEditingName(false);
+    setRenameDialogOpen(false);
   };
 
-  const handleCancelRename = () => {
-    setIsEditingName(false);
-    setEditedName("");
+  const handleRenameDialogOpenChange = (open: boolean) => {
+    setRenameDialogOpen(open);
+    if (!open) {
+      setEditedName("");
+    }
   };
 
   const handleExport = () => {
@@ -257,8 +265,8 @@ export default function PresentationEditorPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-5">
-        <div className="flex items-center gap-3">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-3 md:px-5">
+        <div className="flex min-w-0 items-center gap-3">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
@@ -270,38 +278,17 @@ export default function PresentationEditorPage() {
 
           <Separator orientation="vertical" className="h-6" />
 
-          {isEditingName ? (
-            <div className="flex items-center gap-2">
-              <Input
-                value={editedName}
-                onChange={(e) => setEditedName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveRename();
-                  if (e.key === "Escape") handleCancelRename();
-                }}
-                className="h-9 w-64"
-                autoFocus
-              />
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveRename}>
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCancelRename}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <h1 className="max-w-[300px] truncate text-sm font-semibold tracking-tight md:text-base">{presentation.name}</h1>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={handleStartRename}
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-            </div>
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="max-w-[120px] truncate text-sm font-semibold tracking-tight sm:max-w-[220px] md:max-w-[300px] md:text-base">{presentation.name}</h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleStartRename}
+            >
+              <Pencil className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -384,6 +371,39 @@ export default function PresentationEditorPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={renameDialogOpen} onOpenChange={handleRenameDialogOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename deck</DialogTitle>
+            <DialogDescription>
+              Choose a new name for this deck.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Input
+            value={editedName}
+            onChange={(e) => setEditedName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSaveRename();
+              }
+            }}
+            placeholder="Deck name"
+            autoFocus
+          />
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => handleRenameDialogOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveRename} disabled={!editedName.trim()}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
