@@ -9,8 +9,8 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-        <div className="mx-auto flex h-16 w-full max-w-[760px] items-center justify-between gap-4 px-4 md:px-6">
-          <Link href="/" className="text-base md:text-lg font-medium tracking-tight hover:opacity-70 transition-opacity">
+        <div className="mx-auto flex h-14 w-full max-w-[760px] items-center justify-between gap-2 px-3 md:h-16 md:gap-4 md:px-6">
+          <Link href="/" className="text-sm font-medium tracking-tight transition-opacity hover:opacity-70 md:text-lg">
             SlideBoard
           </Link>
           <div className="flex items-center gap-2">
@@ -19,15 +19,15 @@ export default function DashboardPage() {
               target="_blank"
               rel="noopener noreferrer"
               aria-label="SlideBoard GitHub repository"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:h-9 md:w-9"
             >
               <Github className="h-4 w-4" />
             </a>
             <CreatePresentationDialog
-              label="New Deck"
-              showIcon={false}
+              label="New"
+              showIcon={true}
               buttonSize="sm"
-              className="px-4 text-xs font-medium"
+              className="h-8 gap-1 px-2.5 text-[11px] font-medium md:h-9 md:px-4 md:text-xs"
             />
           </div>
         </div>

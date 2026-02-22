@@ -60,8 +60,8 @@ export default function PresentationEditorPage() {
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("slideboard-assistant-open") !== "0";
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("slideboard-assistant-open") === "1";
   });
   const canvasRegionRef = useRef<HTMLDivElement | null>(null);
   const wheelDebugCountRef = useRef(0);

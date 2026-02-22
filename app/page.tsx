@@ -16,27 +16,27 @@ export default function HomePage() {
         />
       </div>
       <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75 border-b border-border/70">
-        <div className="max-w-[760px] mx-auto px-4 md:px-6 h-16 flex items-center justify-between animate-fade-down">
+        <div className="mx-auto flex h-14 w-full max-w-[760px] items-center justify-between gap-2 px-3 animate-fade-down md:h-16 md:gap-3 md:px-6">
           <Link 
             href="/" 
-            className="text-base md:text-lg font-medium tracking-tight hover:opacity-70 transition-opacity"
+            className="text-sm font-medium tracking-tight transition-opacity hover:opacity-70 md:text-lg"
           >
             SlideBoard
           </Link>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             <a
               href="https://github.com/HejSidharth/slideboard"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="SlideBoard GitHub repository"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:h-9 md:w-9"
             >
               <Github className="h-4 w-4" />
             </a>
             <AnimatedThemeToggler />
-            <Button asChild className="h-9 px-4 text-xs font-medium rounded-lg">
-              <Link href="/dashboard">Get Started</Link>
+            <Button asChild className="h-8 rounded-lg px-3 text-[11px] font-medium md:h-9 md:px-4 md:text-xs">
+              <Link href="/dashboard">Start</Link>
             </Button>
           </div>
         </div>
