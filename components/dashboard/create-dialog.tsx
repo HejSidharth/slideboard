@@ -41,7 +41,7 @@ export function CreatePresentationDialog({
 }: CreatePresentationDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [name, setName] = useState("");
-  const [canvasEngine, setCanvasEngine] = useState<CanvasEngine>("tldraw");
+  const [canvasEngine, setCanvasEngine] = useState<CanvasEngine>("excalidraw");
   const router = useRouter();
   const createPresentation = usePresentationStore((s) => s.createPresentation);
 
@@ -53,7 +53,7 @@ export function CreatePresentationDialog({
     if (!name.trim()) return;
     const id = createPresentation(name.trim(), folderId, canvasEngine);
     setName("");
-    setCanvasEngine("tldraw");
+    setCanvasEngine("excalidraw");
     setDialogOpen(false);
     router.push(`/presentation/${id}`);
   };
@@ -62,7 +62,7 @@ export function CreatePresentationDialog({
     setDialogOpen(nextOpen);
     if (!nextOpen) {
       setName("");
-      setCanvasEngine("tldraw");
+      setCanvasEngine("excalidraw");
     }
   };
 
@@ -105,19 +105,19 @@ export function CreatePresentationDialog({
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
-                variant={canvasEngine === "tldraw" ? "default" : "outline"}
-                className="justify-start"
-                onClick={() => setCanvasEngine("tldraw")}
-              >
-                tldraw
-              </Button>
-              <Button
-                type="button"
                 variant={canvasEngine === "excalidraw" ? "default" : "outline"}
                 className="justify-start"
                 onClick={() => setCanvasEngine("excalidraw")}
               >
                 Excalidraw
+              </Button>
+              <Button
+                type="button"
+                variant={canvasEngine === "tldraw" ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => setCanvasEngine("tldraw")}
+              >
+                tldraw
               </Button>
             </div>
           </div>
