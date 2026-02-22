@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ComponentType } from "react";
 import { useTheme } from "next-themes";
 import "@excalidraw/excalidraw/index.css";
@@ -38,6 +38,10 @@ interface ExcalidrawWrapperProps {
   isReadonly?: boolean;
 }
 
+interface ExcalidrawApiLike {
+  updateScene?: (sceneData: { appState?: Partial<AppState> }) => void;
+}
+
 function normalizeInitialAppState(appState: Partial<AppState>): Partial<AppState> {
   const nextState = { ...appState } as Partial<AppState> & { collaborators?: unknown };
 
@@ -57,6 +61,7 @@ export default function ExcalidrawWrapper({
   isReadonly = false,
 }: ExcalidrawWrapperProps) {
   const { resolvedTheme } = useTheme();
+  const apiRef = useRef<ExcalidrawApiLike | null>(null);
 
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
@@ -75,11 +80,27 @@ export default function ExcalidrawWrapper({
     [initialAppState, initialElements, initialFiles],
   );
 
+  const handleApiReady = useCallback(
+    (api: unknown) => {
+      apiRef.current = api as ExcalidrawApiLike;
+      onReady?.(api);
+    },
+    [onReady],
+  );
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api?.updateScene) return;
+
+    const theme = resolvedTheme === "dark" ? "dark" : "light";
+    api.updateScene({ appState: { theme } });
+  }, [resolvedTheme]);
+
   return (
     <div className="h-full w-full">
       <ExcalidrawComponent
         initialData={initialData}
-        excalidrawAPI={onReady}
+        excalidrawAPI={handleApiReady}
         onChange={handleChange}
         theme={resolvedTheme === "dark" ? "dark" : "light"}
         viewModeEnabled={isReadonly}

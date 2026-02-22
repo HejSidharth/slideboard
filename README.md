@@ -41,7 +41,7 @@ Start the development server:
 npm run dev
 ```
 
-Open `http://localhost:3000` in your browser.
+Open the local URL shown in your terminal (usually `localhost` on port `3000`).
 
 ## Usage
 
