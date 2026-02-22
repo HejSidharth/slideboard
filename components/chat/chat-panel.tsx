@@ -1,29 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Settings, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
-import { ApiKeyDialog } from "./api-key-dialog";
 
 interface ChatPanelProps {
   className?: string;
 }
 
 export function ChatPanel({ className }: ChatPanelProps) {
-  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
-
   const {
     messages,
     isLoading,
     error,
-    hasApiKey,
     sendMessage,
     clearChat,
-    setApiKey,
   } = useChat();
 
   const quickPrompts = useMemo(
@@ -57,19 +52,6 @@ export function ChatPanel({ className }: ChatPanelProps) {
                   <TooltipContent>Clear chat</TooltipContent>
                 </Tooltip>
               )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setShowApiKeyDialog(true)}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{hasApiKey ? "Change API Key" : "Set API Key"}</TooltipContent>
-              </Tooltip>
             </div>
           </div>
 
@@ -84,7 +66,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
                 variant="outline"
                 size="sm"
                 className="h-7 px-2 text-[11px]"
-                disabled={!hasApiKey || isLoading}
+                disabled={isLoading}
                 onClick={() => sendMessage(prompt)}
               >
                 {prompt}
@@ -99,27 +81,10 @@ export function ChatPanel({ className }: ChatPanelProps) {
           </div>
         )}
 
-        {!hasApiKey && (
-          <div className="border-b border-border bg-secondary p-4">
-            <p className="mb-2 text-xs text-muted-foreground">
-              Add an OpenRouter API key to enable assistant.
-            </p>
-            <Button size="sm" className="h-8 text-xs" onClick={() => setShowApiKeyDialog(true)}>
-              Add API Key
-            </Button>
-          </div>
-        )}
-
         <ChatMessages messages={messages} isLoading={isLoading} />
 
-        <ChatInput onSend={sendMessage} isLoading={isLoading} disabled={!hasApiKey} />
+        <ChatInput onSend={sendMessage} isLoading={isLoading} />
       </div>
-
-      <ApiKeyDialog
-        open={showApiKeyDialog}
-        onOpenChange={setShowApiKeyDialog}
-        onSave={setApiKey}
-      />
     </aside>
   );
 }

@@ -1,12 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { nanoid } from "nanoid";
 import {
   sendChatMessage,
-  getStoredApiKey,
-  setStoredApiKey,
-  clearStoredApiKey,
   type ChatMessage as OpenRouterMessage,
 } from "@/lib/openrouter";
 
@@ -21,35 +18,10 @@ export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKeyState] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>("");
-
-  // Load API key from localStorage on mount
-  useEffect(() => {
-    const storedKey = getStoredApiKey();
-    if (storedKey) {
-      setApiKeyState(storedKey);
-    }
-  }, []);
-
-  const setApiKey = useCallback((key: string) => {
-    setStoredApiKey(key);
-    setApiKeyState(key);
-    setError(null);
-  }, []);
-
-  const removeApiKey = useCallback(() => {
-    clearStoredApiKey();
-    setApiKeyState(null);
-  }, []);
 
   const sendMessage = useCallback(
     async (content: string) => {
-      if (!apiKey) {
-        setError("Please set your OpenRouter API key first.");
-        return;
-      }
-
       if (!content.trim()) return;
 
       const userMessage: ChatMessage = {
@@ -91,7 +63,7 @@ export function useChat() {
 
         let fullResponse = "";
 
-        await sendChatMessage(messageHistory, apiKey, (chunk) => {
+        await sendChatMessage(messageHistory, (chunk) => {
           fullResponse += chunk;
           setStreamingContent(fullResponse);
           // Update the assistant message in real-time
@@ -123,7 +95,7 @@ export function useChat() {
         setStreamingContent("");
       }
     },
-    [apiKey, messages]
+    [messages]
   );
 
   const clearChat = useCallback(() => {
@@ -135,12 +107,8 @@ export function useChat() {
     messages,
     isLoading,
     error,
-    apiKey,
     streamingContent,
     sendMessage,
     clearChat,
-    setApiKey,
-    removeApiKey,
-    hasApiKey: !!apiKey,
   };
 }

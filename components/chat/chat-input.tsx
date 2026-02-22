@@ -44,7 +44,7 @@ export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "Add API key to start..." : "Ask SlideBoard Assistant..."}
+          placeholder="Ask SlideBoard Assistant..."
           disabled={isLoading || disabled}
           className="min-h-[40px] max-h-[120px] resize-none"
           rows={1}

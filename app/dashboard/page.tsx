@@ -2,6 +2,7 @@
 
 import { PresentationList } from "@/components/dashboard/presentation-list";
 import { CreatePresentationDialog } from "@/components/dashboard/create-dialog";
+import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { Github } from "lucide-react";
 import Link from "next/link";
 
@@ -23,6 +24,7 @@ export default function DashboardPage() {
             >
               <Github className="h-4 w-4" />
             </a>
+            <AnimatedThemeToggler />
             <CreatePresentationDialog
               label="New"
               showIcon={true}

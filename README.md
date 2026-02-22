@@ -68,11 +68,11 @@ Open `http://localhost:3000` in your browser.
 
 ### AI assistant (optional)
 
-The chat assistant uses OpenRouter. To enable it:
+The chat assistant uses OpenRouter through a server-side API route.
 
-1. Open the chat sidebar from the floating button.
-2. Provide your OpenRouter API key when prompted.
-3. The key is stored in localStorage on your device.
+1. Copy `.env.example` to `.env.local`.
+2. Set `OPENROUTER_API_KEY` in `.env.local`.
+3. (Optional) Change `OPENROUTER_MODEL` from `openrouter/free`.
 
 ## Build
 
@@ -83,7 +83,7 @@ npm run start
 
 ## Configuration
 
-No server-side configuration is required. All data persists in localStorage.
+All deck data persists in localStorage. The assistant requires server env vars in `.env.local`.
 
 ## Contributing
 
