@@ -18,13 +18,18 @@ import type {
 import { CURRENT_SCHEMA_VERSION } from "@/types";
 import type { StoreSnapshot, TLRecord } from "tldraw";
 
-const PERSIST_VERSION = 5;
+const PERSIST_VERSION = 7;
+
+function deepClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
 
 const createEmptySlide = (engine: CanvasEngine): SlideData => {
   if (engine === "excalidraw") {
     return {
       id: nanoid(),
       engine,
+      sceneVersion: 0,
       elements: [],
       appState: {},
       files: {},
@@ -36,6 +41,7 @@ const createEmptySlide = (engine: CanvasEngine): SlideData => {
   return {
     id: nanoid(),
     engine,
+    sceneVersion: 0,
     snapshot: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -68,6 +74,10 @@ function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): Sl
     return {
       id: nanoid(),
       engine,
+      sceneVersion:
+        typeof (slide as { sceneVersion?: unknown })?.sceneVersion === "number"
+          ? ((slide as { sceneVersion: number }).sceneVersion)
+          : 0,
       elements: isExcalidrawElements((slide as { elements?: unknown })?.elements)
         ? ((slide as { elements: readonly ExcalidrawElement[] }).elements)
         : [],
@@ -79,6 +89,21 @@ function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): Sl
         slide && typeof (slide as { files?: unknown }).files === "object" && (slide as { files?: unknown }).files
           ? ((slide as { files: BinaryFiles }).files)
           : {},
+      problemBaselineElements: isExcalidrawElements((slide as { problemBaselineElements?: unknown })?.problemBaselineElements)
+        ? ((slide as { problemBaselineElements: readonly ExcalidrawElement[] }).problemBaselineElements)
+        : undefined,
+      problemBaselineAppState:
+        slide && typeof (slide as { problemBaselineAppState?: unknown }).problemBaselineAppState === "object"
+          ? ((slide as { problemBaselineAppState: Partial<AppState> }).problemBaselineAppState)
+          : undefined,
+      problemBaselineFiles:
+        slide && typeof (slide as { problemBaselineFiles?: unknown }).problemBaselineFiles === "object"
+          ? ((slide as { problemBaselineFiles: BinaryFiles }).problemBaselineFiles)
+          : undefined,
+      problemBaselineUpdatedAt:
+        typeof (slide as { problemBaselineUpdatedAt?: unknown })?.problemBaselineUpdatedAt === "number"
+          ? ((slide as { problemBaselineUpdatedAt: number }).problemBaselineUpdatedAt)
+          : undefined,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -87,9 +112,20 @@ function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): Sl
   return {
     id: nanoid(),
     engine: "tldraw",
+    sceneVersion:
+      typeof (slide as { sceneVersion?: unknown })?.sceneVersion === "number"
+        ? ((slide as { sceneVersion: number }).sceneVersion)
+        : 0,
     snapshot: slide && isStoreSnapshot((slide as { snapshot?: unknown }).snapshot)
       ? ((slide as { snapshot: StoreSnapshot<TLRecord> }).snapshot)
       : null,
+    problemBaselineSnapshot: slide && isStoreSnapshot((slide as { problemBaselineSnapshot?: unknown }).problemBaselineSnapshot)
+      ? ((slide as { problemBaselineSnapshot: StoreSnapshot<TLRecord> }).problemBaselineSnapshot)
+      : undefined,
+    problemBaselineUpdatedAt:
+      typeof (slide as { problemBaselineUpdatedAt?: unknown })?.problemBaselineUpdatedAt === "number"
+        ? ((slide as { problemBaselineUpdatedAt: number }).problemBaselineUpdatedAt)
+        : undefined,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -395,6 +431,7 @@ export const usePresentationStore = create<PresentationStore>()(
                   ? {
                       id: s.id,
                       engine: "excalidraw" as const,
+                      sceneVersion: (s.sceneVersion ?? 0) + 1,
                       elements: [],
                       appState: {},
                       files: {},
@@ -404,12 +441,123 @@ export const usePresentationStore = create<PresentationStore>()(
                   : {
                       id: s.id,
                       engine: "tldraw" as const,
+                      sceneVersion: (s.sceneVersion ?? 0) + 1,
                       snapshot: null,
                       createdAt: s.createdAt,
                       updatedAt: Date.now(),
                     }
                 : s
             );
+
+            return {
+              ...p,
+              slides: newSlides,
+              updatedAt: Date.now(),
+            };
+          }),
+        }));
+      },
+
+      saveProblemState: (presentationId: string, slideIndex: number) => {
+        set((state) => ({
+          presentations: state.presentations.map((p) => {
+            if (p.id !== presentationId) return p;
+
+            const newSlides = p.slides.map((s, i) => {
+              if (i !== slideIndex) return s;
+
+              if (s.engine === "excalidraw") {
+                return {
+                  ...s,
+                  problemBaselineElements: deepClone(s.elements),
+                  problemBaselineAppState: deepClone(s.appState),
+                  problemBaselineFiles: deepClone(s.files),
+                  problemBaselineUpdatedAt: Date.now(),
+                  updatedAt: Date.now(),
+                };
+              }
+
+              return {
+                ...s,
+                problemBaselineSnapshot: s.snapshot ? deepClone(s.snapshot) : null,
+                problemBaselineUpdatedAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+            });
+
+            return {
+              ...p,
+              slides: newSlides,
+              updatedAt: Date.now(),
+            };
+          }),
+        }));
+      },
+
+      resetToProblemState: (presentationId: string, slideIndex: number) => {
+        set((state) => ({
+          presentations: state.presentations.map((p) => {
+            if (p.id !== presentationId) return p;
+
+            const newSlides = p.slides.map((s, i) => {
+              if (i !== slideIndex) return s;
+
+              if (s.engine === "excalidraw") {
+                if (!s.problemBaselineElements) return s;
+                return {
+                  ...s,
+                  sceneVersion: (s.sceneVersion ?? 0) + 1,
+                  elements: deepClone(s.problemBaselineElements),
+                  appState: deepClone(s.problemBaselineAppState ?? {}),
+                  files: deepClone(s.problemBaselineFiles ?? {}),
+                  updatedAt: Date.now(),
+                };
+              }
+
+              if (s.problemBaselineSnapshot === undefined) return s;
+              return {
+                ...s,
+                sceneVersion: (s.sceneVersion ?? 0) + 1,
+                snapshot: s.problemBaselineSnapshot ? deepClone(s.problemBaselineSnapshot) : null,
+                updatedAt: Date.now(),
+              };
+            });
+
+            return {
+              ...p,
+              slides: newSlides,
+              updatedAt: Date.now(),
+            };
+          }),
+        }));
+      },
+
+      clearProblemState: (presentationId: string, slideIndex: number) => {
+        set((state) => ({
+          presentations: state.presentations.map((p) => {
+            if (p.id !== presentationId) return p;
+
+            const newSlides = p.slides.map((s, i) => {
+              if (i !== slideIndex) return s;
+
+              if (s.engine === "excalidraw") {
+                return {
+                  ...s,
+                  problemBaselineElements: undefined,
+                  problemBaselineAppState: undefined,
+                  problemBaselineFiles: undefined,
+                  problemBaselineUpdatedAt: undefined,
+                  updatedAt: Date.now(),
+                };
+              }
+
+              return {
+                ...s,
+                problemBaselineSnapshot: undefined,
+                problemBaselineUpdatedAt: undefined,
+                updatedAt: Date.now(),
+              };
+            });
 
             return {
               ...p,

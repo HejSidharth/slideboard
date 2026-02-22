@@ -18,6 +18,7 @@ export type AppState = Record<string, unknown>;
 interface BaseSlideData {
   id: string;
   engine: CanvasEngine;
+  sceneVersion: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -25,6 +26,8 @@ interface BaseSlideData {
 export interface TldrawSlideData extends BaseSlideData {
   engine: "tldraw";
   snapshot: StoreSnapshot<TLRecord> | null;
+  problemBaselineSnapshot?: StoreSnapshot<TLRecord> | null;
+  problemBaselineUpdatedAt?: number;
 }
 
 export interface ExcalidrawSlideData extends BaseSlideData {
@@ -32,6 +35,10 @@ export interface ExcalidrawSlideData extends BaseSlideData {
   elements: readonly ExcalidrawElement[];
   appState: Partial<AppState>;
   files: BinaryFiles;
+  problemBaselineElements?: readonly ExcalidrawElement[];
+  problemBaselineAppState?: Partial<AppState>;
+  problemBaselineFiles?: BinaryFiles;
+  problemBaselineUpdatedAt?: number;
 }
 
 export type SlideData = TldrawSlideData | ExcalidrawSlideData;
@@ -87,6 +94,9 @@ export interface PresentationStore {
     data: Partial<SlideData>
   ) => void;
   clearSlide: (presentationId: string, slideIndex: number) => void;
+  saveProblemState: (presentationId: string, slideIndex: number) => void;
+  resetToProblemState: (presentationId: string, slideIndex: number) => void;
+  clearProblemState: (presentationId: string, slideIndex: number) => void;
 
   setCurrentSlide: (presentationId: string, index: number) => void;
   goToNextSlide: (presentationId: string) => void;
@@ -96,4 +106,4 @@ export interface PresentationStore {
   importPresentation: (data: string) => string | null;
 }
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 6;

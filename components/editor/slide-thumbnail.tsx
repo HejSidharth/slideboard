@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Copy, Trash2, Eraser, GripVertical } from "lucide-react";
+import { Copy, Trash2, Eraser, GripVertical, RotateCcw, Bookmark, BookmarkCheck, BookmarkX } from "lucide-react";
 import { getSlidePreview } from "@/lib/slide-previews";
 import type { SlideData } from "@/types";
 import type { StoreSnapshot, TLRecord } from "tldraw";
@@ -36,6 +36,9 @@ interface SlideThumbnailProps {
   onDelete: () => void;
   onDuplicate: () => void;
   onClear: () => void;
+  onSaveProblemState: () => void;
+  onResetToProblemState: () => void;
+  onClearProblemState: () => void;
   canDelete: boolean;
 }
 
@@ -61,6 +64,9 @@ export function SlideThumbnail({
   onDelete,
   onDuplicate,
   onClear,
+  onSaveProblemState,
+  onResetToProblemState,
+  onClearProblemState,
   canDelete,
 }: SlideThumbnailProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -85,6 +91,10 @@ export function SlideThumbnail({
       ? countShapesInSnapshot(slide.snapshot)
       : slide.elements.filter((element) => !(element as { isDeleted?: boolean }).isDeleted).length;
   const hasContent = shapeCount > 0;
+  const hasProblemState =
+    slide.engine === "tldraw"
+      ? slide.problemBaselineSnapshot !== undefined
+      : !!slide.problemBaselineElements;
 
   useEffect(() => {
     let active = true;
@@ -150,6 +160,11 @@ export function SlideThumbnail({
                 <span className="rounded-sm border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                   {index + 1}
                 </span>
+                {hasProblemState && (
+                  <span className="rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                    P
+                  </span>
+                )}
               </div>
 
               {canDelete && (
@@ -185,17 +200,30 @@ export function SlideThumbnail({
         </ContextMenuTrigger>
 
         <ContextMenuContent className="w-48">
-          <ContextMenuItem onClick={onDuplicate}>
+          <ContextMenuItem onSelect={onDuplicate}>
             <Copy className="h-4 w-4 mr-2" />
             Duplicate
           </ContextMenuItem>
-          <ContextMenuItem onClick={onClear}>
+          <ContextMenuItem onSelect={onClear}>
             <Eraser className="h-4 w-4 mr-2" />
             Clear Slide
           </ContextMenuItem>
           <ContextMenuSeparator />
+          <ContextMenuItem onSelect={onSaveProblemState}>
+            {hasProblemState ? <BookmarkCheck className="h-4 w-4 mr-2" /> : <Bookmark className="h-4 w-4 mr-2" />}
+            {hasProblemState ? "Update Problem State" : "Set Problem State"}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={onResetToProblemState} disabled={!hasProblemState}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset to Problem State
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={onClearProblemState} disabled={!hasProblemState}>
+            <BookmarkX className="h-4 w-4 mr-2" />
+            Remove Problem State
+          </ContextMenuItem>
+          <ContextMenuSeparator />
           <ContextMenuItem
-            onClick={() => setShowDeleteConfirm(true)}
+            onSelect={() => setShowDeleteConfirm(true)}
             disabled={!canDelete}
             className={cn(canDelete && "text-destructive focus:text-destructive")}
           >

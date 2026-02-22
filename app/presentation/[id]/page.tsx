@@ -19,12 +19,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SlideSidebar } from "@/components/editor/slide-sidebar";
 import { SlideControls } from "@/components/editor/slide-controls";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { CalculatorPanel } from "@/components/editor/calculator-panel";
+import { CalculatorDockPanel } from "@/components/editor/calculator-panel";
+import type { CalculatorMode } from "@/components/editor/calculator-panel";
 import {
   ArrowLeft,
   Play,
   Plus,
   Download,
   Pencil,
+  Calculator,
 } from "lucide-react";
 import type { AppState, BinaryFiles, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
 
@@ -69,6 +73,15 @@ export default function PresentationEditorPage() {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("slideboard-assistant-open") === "1";
   });
+  const [calculatorOpen, setCalculatorOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(`slideboard-calculator-open:${presentationId}`) === "1";
+  });
+  const [calculatorMode, setCalculatorMode] = useState<CalculatorMode>(() => {
+    if (typeof window === "undefined") return "floating";
+    const stored = localStorage.getItem("slideboard-calculator-mode");
+    return stored === "sheet" ? "sheet" : "floating";
+  });
   const canvasRegionRef = useRef<HTMLDivElement | null>(null);
   const wheelDebugCountRef = useRef(0);
   const excalidrawSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,6 +98,10 @@ export default function PresentationEditorPage() {
     if (!presentation) return null;
     return presentation.slides[presentation.currentSlideIndex];
   }, [presentation]);
+
+  const currentSlideId = currentSlide?.id;
+  const currentSlideEngine = currentSlide?.engine;
+  const currentSlideSceneVersion = currentSlide?.sceneVersion;
 
   const handleChange = useCallback(
     (snapshot: StoreSnapshot<TLRecord>) => {
@@ -135,6 +152,14 @@ export default function PresentationEditorPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!currentSlideId || currentSlideEngine !== "excalidraw") return;
+    if (excalidrawSaveTimeoutRef.current) {
+      clearTimeout(excalidrawSaveTimeoutRef.current);
+      excalidrawSaveTimeoutRef.current = null;
+    }
+  }, [currentSlideEngine, currentSlideId, currentSlideSceneVersion]);
+
   const handleStartRename = () => {
     if (!presentation) return;
     setEditedName(presentation.name);
@@ -175,6 +200,14 @@ export default function PresentationEditorPage() {
   useEffect(() => {
     localStorage.setItem("slideboard-assistant-open", assistantOpen ? "1" : "0");
   }, [assistantOpen]);
+
+  useEffect(() => {
+    localStorage.setItem(`slideboard-calculator-open:${presentationId}`, calculatorOpen ? "1" : "0");
+  }, [calculatorOpen, presentationId]);
+
+  useEffect(() => {
+    localStorage.setItem("slideboard-calculator-mode", calculatorMode);
+  }, [calculatorMode]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -310,6 +343,33 @@ export default function PresentationEditorPage() {
             <TooltipContent>Export deck</TooltipContent>
           </Tooltip>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setCalculatorOpen((open) => {
+                    const nextOpen = !open;
+                    if (nextOpen && calculatorMode === "sheet") {
+                      setAssistantOpen(false);
+                    }
+                    return nextOpen;
+                  });
+                }}
+              >
+                <Calculator className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {calculatorOpen
+                ? "Hide calculator"
+                : calculatorMode === "sheet"
+                  ? "Show calculator (sheet)"
+                  : "Show calculator"}
+            </TooltipContent>
+          </Tooltip>
+
           <Separator orientation="vertical" className="h-6" />
 
           <Button
@@ -341,7 +401,7 @@ export default function PresentationEditorPage() {
               {currentSlide && (
                 presentation.canvasEngine === "excalidraw" ? (
                   <ExcalidrawWrapper
-                    key={currentSlide.id}
+                    key={`${currentSlide.id}:${currentSlide.sceneVersion}`}
                     initialElements={currentSlide.engine === "excalidraw" ? currentSlide.elements : []}
                     initialAppState={currentSlide.engine === "excalidraw" ? currentSlide.appState : {}}
                     initialFiles={currentSlide.engine === "excalidraw" ? currentSlide.files : {}}
@@ -349,12 +409,28 @@ export default function PresentationEditorPage() {
                   />
                 ) : (
                   <TldrawWrapper
-                    key={currentSlide.id}
+                    key={`${currentSlide.id}:${currentSlide.sceneVersion}`}
                     slideId={currentSlide.id}
                     snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
                     onChange={handleChange}
                   />
                 )
+              )}
+
+              {calculatorOpen && (
+                calculatorMode === "floating" ? (
+                  <CalculatorPanel
+                    key={`${presentationId}:${calculatorMode}`}
+                    presentationId={presentationId}
+                    onModeChange={(mode) => {
+                      setCalculatorMode(mode);
+                      if (mode === "sheet") {
+                        setAssistantOpen(false);
+                      }
+                    }}
+                    onClose={() => setCalculatorOpen(false)}
+                  />
+                ) : null
               )}
             </div>
 
@@ -364,11 +440,19 @@ export default function PresentationEditorPage() {
             />
           </main>
 
-          {assistantOpen && (
+          {calculatorOpen && calculatorMode === "sheet" ? (
+            <div className="w-[400px] shrink-0 border-l border-border bg-background">
+              <CalculatorDockPanel
+                className="h-full"
+                onModeChange={(mode) => setCalculatorMode(mode)}
+                onClose={() => setCalculatorOpen(false)}
+              />
+            </div>
+          ) : assistantOpen ? (
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <ChatPanel className="h-full" />
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 

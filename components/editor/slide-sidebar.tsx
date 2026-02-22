@@ -42,6 +42,9 @@ export function SlideSidebar({
   const deleteSlide = usePresentationStore((s) => s.deleteSlide);
   const duplicateSlide = usePresentationStore((s) => s.duplicateSlide);
   const clearSlide = usePresentationStore((s) => s.clearSlide);
+  const saveProblemState = usePresentationStore((s) => s.saveProblemState);
+  const resetToProblemState = usePresentationStore((s) => s.resetToProblemState);
+  const clearProblemState = usePresentationStore((s) => s.clearProblemState);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -93,6 +96,27 @@ export function SlideSidebar({
       clearSlide(presentationId, index);
     },
     [presentationId, clearSlide]
+  );
+
+  const handleSaveProblemState = useCallback(
+    (index: number) => {
+      saveProblemState(presentationId, index);
+    },
+    [presentationId, saveProblemState],
+  );
+
+  const handleResetToProblemState = useCallback(
+    (index: number) => {
+      resetToProblemState(presentationId, index);
+    },
+    [presentationId, resetToProblemState],
+  );
+
+  const handleClearProblemState = useCallback(
+    (index: number) => {
+      clearProblemState(presentationId, index);
+    },
+    [presentationId, clearProblemState],
   );
 
   // Collapsed state - show only expand button
@@ -157,6 +181,9 @@ export function SlideSidebar({
                   onDelete={() => handleDeleteSlide(index)}
                   onDuplicate={() => handleDuplicateSlide(index)}
                   onClear={() => handleClearSlide(index)}
+                  onSaveProblemState={() => handleSaveProblemState(index)}
+                  onResetToProblemState={() => handleResetToProblemState(index)}
+                  onClearProblemState={() => handleClearProblemState(index)}
                   canDelete={presentation.slides.length > 1}
                 />
               ))}
