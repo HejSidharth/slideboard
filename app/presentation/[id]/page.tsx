@@ -20,7 +20,7 @@ import {
   Check,
   X,
 } from "lucide-react";
-import type { StoreSnapshot, TLRecord } from "tldraw";
+import type { AppState, BinaryFiles, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
 
 const TldrawWrapper = dynamic(
   () => import("@/components/editor/tldraw-wrapper"),
@@ -37,6 +37,21 @@ const TldrawWrapper = dynamic(
   }
 );
 
+const ExcalidrawWrapper = dynamic(
+  () => import("@/components/editor/excalidraw-wrapper"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-2">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <span className="text-sm text-muted-foreground">Loading canvas...</span>
+        </div>
+      </div>
+    ),
+  },
+);
+
 export default function PresentationEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -50,6 +65,7 @@ export default function PresentationEditorPage() {
   });
   const canvasRegionRef = useRef<HTMLDivElement | null>(null);
   const wheelDebugCountRef = useRef(0);
+  const excalidrawSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const presentation = usePresentationStore((s) =>
     s.presentations.find((p) => p.id === presentationId)
@@ -73,6 +89,45 @@ export default function PresentationEditorPage() {
     },
     [presentation, currentSlide, presentationId, updateSlide]
   );
+
+  const handleExcalidrawChange = useCallback(
+    (
+      elements: readonly ExcalidrawElement[],
+      appState: AppState,
+      files: BinaryFiles,
+    ) => {
+      if (!presentation || !currentSlide) return;
+
+      const nextAppState: Partial<AppState> = {
+        scrollX: appState.scrollX,
+        scrollY: appState.scrollY,
+        zoom: appState.zoom,
+        viewBackgroundColor: appState.viewBackgroundColor,
+      };
+
+      if (excalidrawSaveTimeoutRef.current) {
+        clearTimeout(excalidrawSaveTimeoutRef.current);
+      }
+
+      excalidrawSaveTimeoutRef.current = setTimeout(() => {
+        updateSlide(presentationId, presentation.currentSlideIndex, {
+          elements,
+          appState: nextAppState,
+          files,
+        });
+      }, 250);
+    },
+    [presentation, currentSlide, presentationId, updateSlide],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (excalidrawSaveTimeoutRef.current) {
+        clearTimeout(excalidrawSaveTimeoutRef.current);
+        excalidrawSaveTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const handleStartRename = () => {
     if (!presentation) return;
@@ -297,12 +352,22 @@ export default function PresentationEditorPage() {
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <div ref={canvasRegionRef} className="relative flex-1 overscroll-x-none">
               {currentSlide && (
-                <TldrawWrapper
-                  key={currentSlide.id}
-                slideId={currentSlide.id}
-                snapshot={currentSlide.snapshot}
-                onChange={handleChange}
-              />
+                presentation.canvasEngine === "excalidraw" ? (
+                  <ExcalidrawWrapper
+                    key={currentSlide.id}
+                    initialElements={currentSlide.engine === "excalidraw" ? currentSlide.elements : []}
+                    initialAppState={currentSlide.engine === "excalidraw" ? currentSlide.appState : {}}
+                    initialFiles={currentSlide.engine === "excalidraw" ? currentSlide.files : {}}
+                    onChange={handleExcalidrawChange}
+                  />
+                ) : (
+                  <TldrawWrapper
+                    key={currentSlide.id}
+                    slideId={currentSlide.id}
+                    snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
+                    onChange={handleChange}
+                  />
+                )
               )}
             </div>
 

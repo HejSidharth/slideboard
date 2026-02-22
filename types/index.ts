@@ -9,12 +9,32 @@ import type {
 
 export type { TLRecord, TLShape, TLShapeId, TLStore, Editor, StoreSnapshot };
 
-export interface SlideData {
+export type CanvasEngine = "tldraw" | "excalidraw";
+
+export type ExcalidrawElement = Record<string, unknown>;
+export type BinaryFiles = Record<string, unknown>;
+export type AppState = Record<string, unknown>;
+
+interface BaseSlideData {
   id: string;
-  snapshot: StoreSnapshot<TLRecord> | null;
+  engine: CanvasEngine;
   createdAt: number;
   updatedAt: number;
 }
+
+export interface TldrawSlideData extends BaseSlideData {
+  engine: "tldraw";
+  snapshot: StoreSnapshot<TLRecord> | null;
+}
+
+export interface ExcalidrawSlideData extends BaseSlideData {
+  engine: "excalidraw";
+  elements: readonly ExcalidrawElement[];
+  appState: Partial<AppState>;
+  files: BinaryFiles;
+}
+
+export type SlideData = TldrawSlideData | ExcalidrawSlideData;
 
 export interface Folder {
   id: string;
@@ -27,6 +47,7 @@ export interface Folder {
 export interface Presentation {
   id: string;
   name: string;
+  canvasEngine: CanvasEngine;
   folderId: string | null;
   slides: SlideData[];
   currentSlideIndex: number;
@@ -40,7 +61,7 @@ export interface PresentationStore {
   presentations: Presentation[];
   currentPresentationId: string | null;
 
-  createPresentation: (name: string, folderId?: string | null) => string;
+  createPresentation: (name: string, folderId?: string | null, canvasEngine?: CanvasEngine) => string;
   deletePresentation: (id: string) => void;
   renamePresentation: (id: string, name: string) => void;
   movePresentationToFolder: (id: string, folderId: string | null) => void;
@@ -75,4 +96,4 @@ export interface PresentationStore {
   importPresentation: (data: string) => string | null;
 }
 
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;

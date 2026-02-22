@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import { usePresentationStore } from "@/store/use-presentation-store";
+import type { CanvasEngine } from "@/types";
 
 interface CreatePresentationDialogProps {
   label?: string;
@@ -40,6 +41,7 @@ export function CreatePresentationDialog({
 }: CreatePresentationDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [name, setName] = useState("");
+  const [canvasEngine, setCanvasEngine] = useState<CanvasEngine>("tldraw");
   const router = useRouter();
   const createPresentation = usePresentationStore((s) => s.createPresentation);
 
@@ -49,10 +51,19 @@ export function CreatePresentationDialog({
 
   const handleCreate = () => {
     if (!name.trim()) return;
-    const id = createPresentation(name.trim(), folderId);
+    const id = createPresentation(name.trim(), folderId, canvasEngine);
     setName("");
+    setCanvasEngine("tldraw");
     setDialogOpen(false);
     router.push(`/presentation/${id}`);
+  };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    setDialogOpen(nextOpen);
+    if (!nextOpen) {
+      setName("");
+      setCanvasEngine("tldraw");
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -63,7 +74,7 @@ export function CreatePresentationDialog({
   };
 
   return (
-    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+    <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
       {!hideTrigger && (
         <DialogTrigger asChild>
           <Button size={buttonSize} className={cn(showIcon ? "gap-2" : "", className)}>
@@ -88,6 +99,28 @@ export function CreatePresentationDialog({
             onKeyDown={handleKeyDown}
             autoFocus
           />
+
+          <div className="mt-4 space-y-2">
+            <p className="text-xs text-muted-foreground">Whiteboard engine</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={canvasEngine === "tldraw" ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => setCanvasEngine("tldraw")}
+              >
+                tldraw
+              </Button>
+              <Button
+                type="button"
+                variant={canvasEngine === "excalidraw" ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => setCanvasEngine("excalidraw")}
+              >
+                Excalidraw
+              </Button>
+            </div>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setDialogOpen(false)}>

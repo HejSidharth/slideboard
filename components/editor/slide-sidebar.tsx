@@ -118,7 +118,7 @@ export function SlideSidebar({
 
   // Expanded state - full sidebar
   return (
-    <aside className="w-72 shrink-0 border-r border-border bg-background transition-all duration-200 flex flex-col">
+    <aside className="w-72 shrink-0 border-r border-border bg-background transition-all duration-200 flex min-h-0 flex-col">
       <div className="flex items-center justify-between border-b border-border p-3">
         <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Slides</h2>
         <Tooltip>
@@ -136,7 +136,7 @@ export function SlideSidebar({
         </Tooltip>
       </div>
       
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="p-3 space-y-2">
           <DndContext
             sensors={sensors}
@@ -165,7 +165,7 @@ export function SlideSidebar({
         </div>
       </ScrollArea>
 
-      <div className="border-t border-border p-3">
+      <div className="shrink-0 border-t border-border p-3">
         <Button
           variant="outline"
           className="w-full gap-2"

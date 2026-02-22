@@ -19,6 +19,18 @@ const TldrawWrapper = dynamic(
   }
 );
 
+const ExcalidrawWrapper = dynamic(
+  () => import("@/components/editor/excalidraw-wrapper"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    ),
+  },
+);
+
 export default function PresentationModePage() {
   const params = useParams();
   const router = useRouter();
@@ -155,12 +167,22 @@ export default function PresentationModePage() {
       style={{ touchAction: "pan-y" }}
     >
       <div className="absolute inset-0">
-        <TldrawWrapper
-          key={currentSlide.id}
-          slideId={currentSlide.id}
-          snapshot={currentSlide.snapshot}
-          isReadonly={true}
-        />
+        {presentation.canvasEngine === "excalidraw" ? (
+          <ExcalidrawWrapper
+            key={currentSlide.id}
+            initialElements={currentSlide.engine === "excalidraw" ? currentSlide.elements : []}
+            initialAppState={currentSlide.engine === "excalidraw" ? currentSlide.appState : {}}
+            initialFiles={currentSlide.engine === "excalidraw" ? currentSlide.files : {}}
+            isReadonly={true}
+          />
+        ) : (
+          <TldrawWrapper
+            key={currentSlide.id}
+            slideId={currentSlide.id}
+            snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
+            isReadonly={true}
+          />
+        )}
       </div>
 
       <div className="absolute bottom-20 right-6 z-10 flex items-center gap-3">

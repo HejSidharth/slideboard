@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 
@@ -24,6 +25,15 @@ export default function HomePage() {
           </Link>
           
           <div className="flex items-center gap-3">
+            <a
+              href="https://github.com/HejSidharth/slideboard"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="SlideBoard GitHub repository"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Github className="h-4 w-4" />
+            </a>
             <AnimatedThemeToggler />
             <Button asChild className="h-9 px-4 text-xs font-medium rounded-lg">
               <Link href="/dashboard">Get Started</Link>

@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { Copy, Trash2, Eraser, GripVertical } from "lucide-react";
 import { getSlidePreview } from "@/lib/slide-previews";
 import type { SlideData } from "@/types";
+import type { StoreSnapshot, TLRecord } from "tldraw";
 
 interface SlideThumbnailProps {
   slide: SlideData;
@@ -38,7 +39,7 @@ interface SlideThumbnailProps {
   canDelete: boolean;
 }
 
-function countShapesInSnapshot(snapshot: SlideData["snapshot"]): number {
+function countShapesInSnapshot(snapshot: StoreSnapshot<TLRecord> | null): number {
   if (!snapshot || !snapshot.store) return 0;
   let count = 0;
   for (const key in snapshot.store) {
@@ -79,7 +80,10 @@ export function SlideThumbnail({
     transition,
   };
 
-  const shapeCount = countShapesInSnapshot(slide.snapshot);
+  const shapeCount =
+    slide.engine === "tldraw"
+      ? countShapesInSnapshot(slide.snapshot)
+      : slide.elements.filter((element) => !(element as { isDeleted?: boolean }).isDeleted).length;
   const hasContent = shapeCount > 0;
 
   useEffect(() => {

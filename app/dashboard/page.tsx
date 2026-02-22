@@ -2,6 +2,7 @@
 
 import { PresentationList } from "@/components/dashboard/presentation-list";
 import { CreatePresentationDialog } from "@/components/dashboard/create-dialog";
+import { Github } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -12,12 +13,23 @@ export default function DashboardPage() {
           <Link href="/" className="text-base md:text-lg font-medium tracking-tight hover:opacity-70 transition-opacity">
             SlideBoard
           </Link>
-          <CreatePresentationDialog
-            label="New Deck"
-            showIcon={false}
-            buttonSize="sm"
-            className="px-4 text-xs font-medium"
-          />
+          <div className="flex items-center gap-2">
+            <a
+              href="https://github.com/HejSidharth/slideboard"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="SlideBoard GitHub repository"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Github className="h-4 w-4" />
+            </a>
+            <CreatePresentationDialog
+              label="New Deck"
+              showIcon={false}
+              buttonSize="sm"
+              className="px-4 text-xs font-medium"
+            />
+          </div>
         </div>
       </header>
 

@@ -3,18 +3,44 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { nanoid } from "nanoid";
-import type { Folder, Presentation, PresentationStore, SlideData } from "@/types";
+import type {
+  AppState,
+  BinaryFiles,
+  CanvasEngine,
+  ExcalidrawElement,
+  Folder,
+  Presentation,
+  PresentationStore,
+  SlideData,
+  TldrawSlideData,
+  ExcalidrawSlideData,
+} from "@/types";
 import { CURRENT_SCHEMA_VERSION } from "@/types";
 import type { StoreSnapshot, TLRecord } from "tldraw";
 
-const PERSIST_VERSION = 4;
+const PERSIST_VERSION = 5;
 
-const createEmptySlide = (): SlideData => ({
-  id: nanoid(),
-  snapshot: null,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-});
+const createEmptySlide = (engine: CanvasEngine): SlideData => {
+  if (engine === "excalidraw") {
+    return {
+      id: nanoid(),
+      engine,
+      elements: [],
+      appState: {},
+      files: {},
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  }
+
+  return {
+    id: nanoid(),
+    engine,
+    snapshot: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+};
 
 const createResetState = (): Pick<PresentationStore, "folders" | "presentations" | "currentPresentationId"> => ({
   folders: [],
@@ -27,19 +53,58 @@ function isStoreSnapshot(value: unknown): value is StoreSnapshot<TLRecord> {
   return "schema" in value && "store" in value;
 }
 
-const sanitizeImportedSlide = (slide: SlideData): SlideData => ({
-  ...slide,
-  id: nanoid(),
-  snapshot: isStoreSnapshot(slide.snapshot) ? slide.snapshot : null,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-});
+function isExcalidrawElements(value: unknown): value is readonly ExcalidrawElement[] {
+  return Array.isArray(value);
+}
 
-const createDefaultPresentation = (name: string, folderId: string | null = null): Presentation => ({
+function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): SlideData {
+  const timestamp = Date.now();
+  const slide = rawSlide as Partial<SlideData> | undefined;
+
+  const hasExcalidrawData = !!slide && (slide.engine === "excalidraw" || "elements" in slide);
+  const engine: CanvasEngine = hasExcalidrawData ? "excalidraw" : fallbackEngine;
+
+  if (engine === "excalidraw") {
+    return {
+      id: nanoid(),
+      engine,
+      elements: isExcalidrawElements((slide as { elements?: unknown })?.elements)
+        ? ((slide as { elements: readonly ExcalidrawElement[] }).elements)
+        : [],
+      appState:
+        slide && typeof (slide as { appState?: unknown }).appState === "object" && (slide as { appState?: unknown }).appState
+          ? ((slide as { appState: Partial<AppState> }).appState)
+          : {},
+      files:
+        slide && typeof (slide as { files?: unknown }).files === "object" && (slide as { files?: unknown }).files
+          ? ((slide as { files: BinaryFiles }).files)
+          : {},
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+  }
+
+  return {
+    id: nanoid(),
+    engine: "tldraw",
+    snapshot: slide && isStoreSnapshot((slide as { snapshot?: unknown }).snapshot)
+      ? ((slide as { snapshot: StoreSnapshot<TLRecord> }).snapshot)
+      : null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+const createDefaultPresentation = (
+  name: string,
+  folderId: string | null = null,
+  canvasEngine: CanvasEngine = "tldraw",
+): Presentation => ({
   id: nanoid(),
   name,
+  canvasEngine,
   folderId,
-  slides: [createEmptySlide()],
+  slides: [createEmptySlide(canvasEngine)],
   currentSlideIndex: 0,
   createdAt: Date.now(),
   updatedAt: Date.now(),
@@ -53,8 +118,8 @@ export const usePresentationStore = create<PresentationStore>()(
       presentations: [],
       currentPresentationId: null,
 
-      createPresentation: (name: string, folderId: string | null = null) => {
-        const presentation = createDefaultPresentation(name, folderId);
+      createPresentation: (name: string, folderId: string | null = null, canvasEngine: CanvasEngine = "tldraw") => {
+        const presentation = createDefaultPresentation(name, folderId, canvasEngine);
         set((state) => ({
           presentations: [...state.presentations, presentation],
           currentPresentationId: presentation.id,
@@ -176,7 +241,7 @@ export const usePresentationStore = create<PresentationStore>()(
         set((state) => ({
           presentations: state.presentations.map((p) => {
             if (p.id !== presentationId) return p;
-            const newSlide = createEmptySlide();
+            const newSlide = createEmptySlide(p.canvasEngine);
             const newSlides = [
               ...p.slides.slice(0, p.currentSlideIndex + 1),
               newSlide,
@@ -294,8 +359,20 @@ export const usePresentationStore = create<PresentationStore>()(
 
             const newSlides = p.slides.map((s, i) =>
               i === slideIndex
-                ? { ...s, ...data, updatedAt: Date.now() }
-                : s
+                ? s.engine === "tldraw"
+                  ? {
+                      ...s,
+                      snapshot: "snapshot" in data ? (data as Partial<TldrawSlideData>).snapshot ?? null : s.snapshot,
+                      updatedAt: Date.now(),
+                    }
+                  : {
+                      ...s,
+                      elements: "elements" in data ? (data as Partial<ExcalidrawSlideData>).elements ?? [] : s.elements,
+                      appState: "appState" in data ? (data as Partial<ExcalidrawSlideData>).appState ?? {} : s.appState,
+                      files: "files" in data ? (data as Partial<ExcalidrawSlideData>).files ?? {} : s.files,
+                      updatedAt: Date.now(),
+                    }
+                : s,
             );
 
             return {
@@ -314,12 +391,23 @@ export const usePresentationStore = create<PresentationStore>()(
 
             const newSlides = p.slides.map((s, i) =>
               i === slideIndex
-                ? {
-                    ...createEmptySlide(),
-                    id: s.id,
-                    createdAt: s.createdAt,
-                    updatedAt: Date.now(),
-                  }
+                ? p.canvasEngine === "excalidraw"
+                  ? {
+                      id: s.id,
+                      engine: "excalidraw" as const,
+                      elements: [],
+                      appState: {},
+                      files: {},
+                      createdAt: s.createdAt,
+                      updatedAt: Date.now(),
+                    }
+                  : {
+                      id: s.id,
+                      engine: "tldraw" as const,
+                      snapshot: null,
+                      createdAt: s.createdAt,
+                      updatedAt: Date.now(),
+                    }
                 : s
             );
 
@@ -386,14 +474,21 @@ export const usePresentationStore = create<PresentationStore>()(
             return null;
           }
 
+          const inferredEngine: CanvasEngine =
+            parsed.canvasEngine ??
+            (parsed.slides.some((slide) => (slide as Partial<SlideData>).engine === "excalidraw" || "elements" in (slide as object))
+              ? "excalidraw"
+              : "tldraw");
+
           const newPresentation: Presentation = {
             ...parsed,
             id: nanoid(),
             name: `${parsed.name} (Imported)`,
+            canvasEngine: inferredEngine,
             folderId: null,
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            slides: parsed.slides.map(sanitizeImportedSlide),
+            slides: parsed.slides.map((slide) => normalizeSlideData(slide, inferredEngine)),
             version: CURRENT_SCHEMA_VERSION,
           };
 
@@ -418,10 +513,26 @@ export const usePresentationStore = create<PresentationStore>()(
           return createResetState() as unknown as PresentationStore;
         }
 
-        const migratedPresentations = (state.presentations ?? []).map((presentation) => ({
-          ...presentation,
-          folderId: "folderId" in presentation ? presentation.folderId : null,
-        }));
+        const migratedPresentations = (state.presentations ?? []).map((presentation) => {
+          const inferredEngine: CanvasEngine =
+            "canvasEngine" in presentation && presentation.canvasEngine === "excalidraw"
+              ? "excalidraw"
+              : Array.isArray(presentation.slides) && presentation.slides.some((slide) => "elements" in slide)
+                ? "excalidraw"
+                : "tldraw";
+
+          const migratedSlides = Array.isArray(presentation.slides)
+            ? presentation.slides.map((slide) => normalizeSlideData(slide, inferredEngine))
+            : [createEmptySlide(inferredEngine)];
+
+          return {
+            ...presentation,
+            canvasEngine: inferredEngine,
+            folderId: "folderId" in presentation ? presentation.folderId : null,
+            slides: migratedSlides,
+            version: CURRENT_SCHEMA_VERSION,
+          };
+        });
 
         return {
           ...state,
