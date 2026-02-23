@@ -36,7 +36,6 @@ export default function PresentationModePage() {
   const params = useParams();
   const router = useRouter();
   const presentationId = params.id as string;
-  const tldrawLicenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
@@ -183,7 +182,6 @@ export default function PresentationModePage() {
             slideId={currentSlide.id}
             snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
             isReadonly={true}
-            licenseKey={tldrawLicenseKey}
           />
         )}
       </div>

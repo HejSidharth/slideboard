@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import "tldraw/tldraw.css";
 import { Tldraw, getSnapshot, loadSnapshot } from "tldraw";
@@ -14,6 +14,33 @@ export interface TldrawWrapperProps {
   onReady?: (editor: Editor) => void;
   isReadonly?: boolean;
   licenseKey?: string;
+}
+
+let cachedLicenseKey: string | null | undefined;
+let licenseRequest: Promise<string | null> | null = null;
+
+async function loadTldrawLicenseKey(): Promise<string | null> {
+  if (cachedLicenseKey !== undefined) {
+    return cachedLicenseKey;
+  }
+
+  if (!licenseRequest) {
+    licenseRequest = fetch("/api/tldraw-license", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = (await response.json()) as { licenseKey?: string | null };
+        return typeof data.licenseKey === "string" && data.licenseKey.trim().length > 0
+          ? data.licenseKey
+          : null;
+      })
+      .catch(() => null)
+      .finally(() => {
+        licenseRequest = null;
+      });
+  }
+
+  cachedLicenseKey = await licenseRequest;
+  return cachedLicenseKey;
 }
 
 function TldrawWrapper({
@@ -31,6 +58,8 @@ function TldrawWrapper({
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storeCleanupRef = useRef<(() => void) | null>(null);
   const isHydratingRef = useRef(false);
+  const [loadedLicenseKey, setLoadedLicenseKey] = useState<string | null>(null);
+  const effectiveLicenseKey = licenseKey ?? loadedLicenseKey;
 
   const canLoadDocumentSnapshot = useCallback((value: unknown): value is StoreSnapshot<TLRecord> => {
     if (!value || typeof value !== "object") return false;
@@ -53,6 +82,26 @@ function TldrawWrapper({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    if (licenseKey !== undefined) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateLicense = async () => {
+      const key = await loadTldrawLicenseKey();
+      if (cancelled) return;
+      setLoadedLicenseKey(key);
+    };
+
+    void hydrateLicense();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [licenseKey]);
 
   const flushSnapshot = useCallback(() => {
     const editor = editorRef.current;
@@ -185,7 +234,12 @@ function TldrawWrapper({
       className="h-full w-full tldraw-container"
       style={{ touchAction: isReadonly ? "pan-y" : "none" }}
     >
-      <Tldraw onMount={handleMount} hideUi={isReadonly} inferDarkMode licenseKey={licenseKey} />
+      <Tldraw
+        onMount={handleMount}
+        hideUi={isReadonly}
+        inferDarkMode
+        licenseKey={effectiveLicenseKey ?? undefined}
+      />
     </div>
   );
 }

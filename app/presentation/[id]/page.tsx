@@ -74,7 +74,6 @@ export default function PresentationEditorPage() {
   const params = useParams();
   const router = useRouter();
   const presentationId = params.id as string;
-  const tldrawLicenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -558,7 +557,6 @@ export default function PresentationEditorPage() {
                     slideId={currentSlide.id}
                     snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
                     onChange={handleChange}
-                    licenseKey={tldrawLicenseKey}
                     onReady={(editor) => {
                       tldrawEditorRef.current = editor;
                     }}
