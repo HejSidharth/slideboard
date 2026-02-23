@@ -83,7 +83,7 @@ npm run start
 
 ## Configuration
 
-All deck data persists in localStorage. The assistant requires server env vars in `.env.local`.
+All deck data persists in localStorage. The assistant requires server env vars in `.env.local`. If you use licensed tldraw features, set `NEXT_PUBLIC_TLDRAW_LICENSE_KEY` in `.env.local`.
 
 ## Contributing
 

@@ -21,6 +21,7 @@ import { SlideControls } from "@/components/editor/slide-controls";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { CalculatorPanel } from "@/components/editor/calculator-panel";
 import { CalculatorDockPanel } from "@/components/editor/calculator-panel";
+import { PresentationTimer } from "@/components/editor/presentation-timer";
 import type { CalculatorMode } from "@/components/editor/calculator-panel";
 import {
   ArrowLeft,
@@ -73,6 +74,7 @@ export default function PresentationEditorPage() {
   const params = useParams();
   const router = useRouter();
   const presentationId = params.id as string;
+  const tldrawLicenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -508,6 +510,8 @@ export default function PresentationEditorPage() {
             <TooltipContent>Download slide image</TooltipContent>
           </Tooltip>
 
+          <PresentationTimer presentationId={presentationId} />
+
           <Separator orientation="vertical" className="h-6" />
 
           <Button
@@ -554,6 +558,7 @@ export default function PresentationEditorPage() {
                     slideId={currentSlide.id}
                     snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
                     onChange={handleChange}
+                    licenseKey={tldrawLicenseKey}
                     onReady={(editor) => {
                       tldrawEditorRef.current = editor;
                     }}

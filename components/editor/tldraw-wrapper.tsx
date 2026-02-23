@@ -13,6 +13,7 @@ export interface TldrawWrapperProps {
   onChange?: (snapshot: StoreSnapshot<TLRecord>) => void;
   onReady?: (editor: Editor) => void;
   isReadonly?: boolean;
+  licenseKey?: string;
 }
 
 function TldrawWrapper({
@@ -21,6 +22,7 @@ function TldrawWrapper({
   onChange,
   onReady,
   isReadonly = false,
+  licenseKey,
 }: TldrawWrapperProps) {
   const { theme, resolvedTheme } = useTheme();
   const editorRef = useRef<Editor | null>(null);
@@ -183,7 +185,7 @@ function TldrawWrapper({
       className="h-full w-full tldraw-container"
       style={{ touchAction: isReadonly ? "pan-y" : "none" }}
     >
-      <Tldraw onMount={handleMount} hideUi={isReadonly} inferDarkMode />
+      <Tldraw onMount={handleMount} hideUi={isReadonly} inferDarkMode licenseKey={licenseKey} />
     </div>
   );
 }

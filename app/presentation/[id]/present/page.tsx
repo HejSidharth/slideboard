@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { Button } from "@/components/ui/button";
+import { PresentationTimer } from "@/components/editor/presentation-timer";
 import { X, ChevronLeft, ChevronRight, Expand, Shrink } from "lucide-react";
 
 const TldrawWrapper = dynamic(
@@ -35,6 +36,7 @@ export default function PresentationModePage() {
   const params = useParams();
   const router = useRouter();
   const presentationId = params.id as string;
+  const tldrawLicenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
@@ -181,8 +183,13 @@ export default function PresentationModePage() {
             slideId={currentSlide.id}
             snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
             isReadonly={true}
+            licenseKey={tldrawLicenseKey}
           />
         )}
+      </div>
+
+      <div className="pointer-events-auto absolute left-1/2 top-4 z-30 -translate-x-1/2">
+        <PresentationTimer presentationId={presentationId} variant="present" />
       </div>
 
       <div className="absolute bottom-20 right-6 z-10 flex items-center gap-3">
