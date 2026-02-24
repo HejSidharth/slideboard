@@ -104,6 +104,28 @@ export interface PresentationStore {
 
   exportPresentation: (id: string) => string;
   importPresentation: (data: string) => string | null;
+
+  addSlidesFromProblems: (
+    presentationId: string,
+    problems: ExtractedProblem[],
+  ) => void;
+}
+
+export interface ProblemBoundingBox {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+export interface ExtractedProblem {
+  problemNumber: string;
+  boundingBox: ProblemBoundingBox;
+  description: string;
+  croppedImageDataURL: string;
+  sourcePageIndex: number;
+  width: number;
+  height: number;
 }
 
 export const CURRENT_SCHEMA_VERSION = 6;

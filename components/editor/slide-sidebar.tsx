@@ -192,7 +192,7 @@ export function SlideSidebar({
         </div>
       </ScrollArea>
 
-      <div className="shrink-0 border-t border-border p-3">
+      <div className="shrink-0 border-t border-border p-3 space-y-2">
         <Button
           variant="outline"
           className="w-full gap-2"

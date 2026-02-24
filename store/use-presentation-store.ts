@@ -8,6 +8,7 @@ import type {
   BinaryFiles,
   CanvasEngine,
   ExcalidrawElement,
+  ExtractedProblem,
   Folder,
   Presentation,
   PresentationStore,
@@ -47,6 +48,158 @@ const createEmptySlide = (engine: CanvasEngine): SlideData => {
     updatedAt: Date.now(),
   };
 };
+
+/**
+ * Canvas dimensions for positioning imported images.
+ * Excalidraw uses virtual coordinates; we center images in a
+ * reasonable viewport area.
+ */
+const CANVAS_WIDTH = 1920;
+const CANVAS_HEIGHT = 1080;
+const PADDING = 40;
+
+function createExcalidrawSlideFromProblem(problem: ExtractedProblem): ExcalidrawSlideData {
+  const fileId = nanoid();
+  const elementId = nanoid();
+
+  // Scale image to fit within the canvas with padding
+  const maxW = CANVAS_WIDTH - PADDING * 2;
+  const maxH = CANVAS_HEIGHT - PADDING * 2;
+  const scale = Math.min(maxW / problem.width, maxH / problem.height, 1);
+  const displayW = Math.round(problem.width * scale);
+  const displayH = Math.round(problem.height * scale);
+
+  // Center on canvas
+  const x = Math.round((CANVAS_WIDTH - displayW) / 2);
+  const y = Math.round((CANVAS_HEIGHT - displayH) / 2);
+
+  const imageElement: ExcalidrawElement = {
+    type: "image",
+    version: 1,
+    versionNonce: Math.floor(Math.random() * 2147483647),
+    index: "a0",
+    isDeleted: false,
+    id: elementId,
+    fillStyle: "solid",
+    strokeWidth: 2,
+    strokeStyle: "solid",
+    roughness: 0,
+    opacity: 100,
+    angle: 0,
+    x,
+    y,
+    strokeColor: "transparent",
+    backgroundColor: "transparent",
+    width: displayW,
+    height: displayH,
+    seed: Math.floor(Math.random() * 2147483647),
+    groupIds: [],
+    frameId: null,
+    boundElements: null,
+    updated: Date.now(),
+    link: null,
+    locked: false,
+    roundness: null,
+    fileId,
+    status: "saved",
+    scale: [1, 1],
+    crop: null,
+  };
+
+  const files: BinaryFiles = {
+    [fileId]: {
+      mimeType: "image/jpeg",
+      id: fileId,
+      dataURL: problem.croppedImageDataURL,
+      created: Date.now(),
+    },
+  };
+
+  return {
+    id: nanoid(),
+    engine: "excalidraw",
+    sceneVersion: 0,
+    elements: [imageElement],
+    appState: {
+      scrollX: 0,
+      scrollY: 0,
+      zoom: { value: 1 },
+    },
+    files,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+function createTldrawSlideFromProblem(problem: ExtractedProblem): TldrawSlideData {
+  const assetId = `asset:${nanoid()}`;
+  const shapeId = `shape:${nanoid()}`;
+
+  // Scale image to fit
+  const maxW = CANVAS_WIDTH - PADDING * 2;
+  const maxH = CANVAS_HEIGHT - PADDING * 2;
+  const scale = Math.min(maxW / problem.width, maxH / problem.height, 1);
+  const displayW = Math.round(problem.width * scale);
+  const displayH = Math.round(problem.height * scale);
+  const x = Math.round((CANVAS_WIDTH - displayW) / 2);
+  const y = Math.round((CANVAS_HEIGHT - displayH) / 2);
+
+  const snapshot: StoreSnapshot<TLRecord> = {
+    store: {
+      [assetId]: {
+        id: assetId,
+        typeName: "asset",
+        type: "image",
+        props: {
+          name: `problem-${problem.problemNumber}.png`,
+          src: problem.croppedImageDataURL,
+          w: problem.width,
+          h: problem.height,
+          mimeType: "image/jpeg",
+          isAnimated: false,
+        },
+        meta: {},
+      } as unknown as TLRecord,
+      [shapeId]: {
+        id: shapeId,
+        typeName: "shape",
+        type: "image",
+        x,
+        y,
+        rotation: 0,
+        index: "a1",
+        parentId: "page:page",
+        isLocked: false,
+        opacity: 1,
+        props: {
+          w: displayW,
+          h: displayH,
+          assetId,
+          playing: true,
+          url: "",
+          crop: null,
+          flipX: false,
+          flipY: false,
+          altText: `Problem ${problem.problemNumber}`,
+        },
+        meta: {},
+      } as unknown as TLRecord,
+    },
+    schema: {
+      schemaVersion: 2,
+      sequences: {},
+    },
+  };
+
+  return {
+    id: nanoid(),
+    engine: "tldraw",
+    sceneVersion: 0,
+    snapshot,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
 
 const createResetState = (): Pick<PresentationStore, "folders" | "presentations" | "currentPresentationId"> => ({
   folders: [],
@@ -649,6 +802,29 @@ export const usePresentationStore = create<PresentationStore>()(
           console.error("Failed to import presentation:", error);
           return null;
         }
+      },
+
+      addSlidesFromProblems: (presentationId: string, problems: ExtractedProblem[]) => {
+        set((state) => ({
+          presentations: state.presentations.map((p) => {
+            if (p.id !== presentationId) return p;
+            if (problems.length === 0) return p;
+
+            const newSlides: SlideData[] = problems.map((problem) => {
+              if (p.canvasEngine === "excalidraw") {
+                return createExcalidrawSlideFromProblem(problem);
+              }
+              return createTldrawSlideFromProblem(problem);
+            });
+
+            return {
+              ...p,
+              slides: [...p.slides, ...newSlides],
+              currentSlideIndex: p.slides.length,
+              updatedAt: Date.now(),
+            };
+          }),
+        }));
       },
     }),
     {

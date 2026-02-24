@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { PresentationCard } from "./presentation-card";
 import { CreatePresentationDialog } from "./create-dialog";
@@ -27,9 +27,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, FileText, Plus, Upload } from "lucide-react";
+import { ChevronDown, FileText, Plus, Upload, FileUp } from "lucide-react";
 import { File, Folder, Tree } from "@/components/ui/file-tree";
+import { ImportDocumentDialog } from "@/components/editor/import-document-dialog";
 import type { Folder as FolderType } from "@/types";
+import type { ExtractedProblem } from "@/types";
 
 const ALL_SCOPE = "all";
 const UNFILED_SCOPE = "unfiled";
@@ -68,6 +70,9 @@ export function PresentationList() {
   const createFolder = usePresentationStore((s) => s.createFolder);
   const renameFolder = usePresentationStore((s) => s.renameFolder);
   const deleteFolder = usePresentationStore((s) => s.deleteFolder);
+  const createPresentation = usePresentationStore((s) => s.createPresentation);
+  const addSlidesFromProblems = usePresentationStore((s) => s.addSlidesFromProblems);
+  const deleteSlide = usePresentationStore((s) => s.deleteSlide);
 
   const [scope, setScope] = useState<FolderScope>(ALL_SCOPE);
   const [searchQuery, setSearchQuery] = useState("");
@@ -79,6 +84,7 @@ export function PresentationList() {
   const [folderParentId, setFolderParentId] = useState<string | null>(null);
   const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
   const [createDeckFolderId, setCreateDeckFolderId] = useState<string | null>(null);
+  const [importDocOpen, setImportDocOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedFolder = useMemo(
@@ -206,6 +212,17 @@ export function PresentationList() {
     deleteFolder(folderId);
   };
 
+  const handleDocumentImportComplete = useCallback(
+    (problems: ExtractedProblem[], fileName: string) => {
+      const name = fileName.replace(/\.pdf$/i, "");
+      const id = createPresentation(name, currentFolderId, "excalidraw");
+      addSlidesFromProblems(id, problems);
+      // Remove the default blank slide that createPresentation adds
+      deleteSlide(id, 0);
+    },
+    [createPresentation, addSlidesFromProblems, deleteSlide, currentFolderId],
+  );
+
   const renderFolderNodes = (parentId: string | null): React.ReactNode => {
     const nodes = childrenMap.get(parentId) ?? [];
     return nodes.map((folder) => (
@@ -253,6 +270,10 @@ export function PresentationList() {
               <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
                 <Upload className="mr-2 h-4 w-4" />
                 Import Deck
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openAfterContextMenu(() => setImportDocOpen(true))}>
+                <FileUp className="mr-2 h-4 w-4" />
+                Import from Document
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -419,6 +440,12 @@ export function PresentationList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportDocumentDialog
+        open={importDocOpen}
+        onOpenChange={setImportDocOpen}
+        onImportComplete={handleDocumentImportComplete}
+      />
     </div>
   );
 }

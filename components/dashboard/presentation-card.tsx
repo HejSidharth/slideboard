@@ -179,22 +179,26 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={() => setRenameOpen(true)}>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      requestAnimationFrame(() => setRenameOpen(true));
+                    }}
+                  >
                     <Pencil className="mr-2 h-4 w-4" />
                     Rename
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDuplicate}>
+                  <DropdownMenuItem onSelect={handleDuplicate}>
                     <Copy className="mr-2 h-4 w-4" />
                     Duplicate
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExport}>
+                  <DropdownMenuItem onSelect={handleExport}>
                     <Download className="mr-2 h-4 w-4" />
                     Export
                   </DropdownMenuItem>
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>Move to folder</DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
-                      <DropdownMenuItem onClick={() => movePresentationToFolder(presentation.id, null)}>
+                      <DropdownMenuItem onSelect={() => movePresentationToFolder(presentation.id, null)}>
                         Unfiled
                       </DropdownMenuItem>
                       {folders.length === 0 ? (
@@ -206,7 +210,7 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
                           .map((folder) => (
                             <DropdownMenuItem
                               key={folder.id}
-                              onClick={() => movePresentationToFolder(presentation.id, folder.id)}
+                              onSelect={() => movePresentationToFolder(presentation.id, folder.id)}
                             >
                               {getFolderPath(folder)}
                             </DropdownMenuItem>
@@ -216,8 +220,10 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
                   </DropdownMenuSub>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={() => setDeleteOpen(true)}
-                    className="text-destructive focus:text-destructive"
+                    variant="destructive"
+                    onSelect={() => {
+                      requestAnimationFrame(() => setDeleteOpen(true));
+                    }}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete
