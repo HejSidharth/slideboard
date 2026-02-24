@@ -343,21 +343,39 @@ export default function PresentationEditorPage() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const isCmdJ = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j";
-      if (!isCmdJ) return;
+      const target = event.target;
+      const isTypingTarget =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT");
+
+      if (isTypingTarget) return;
+
+      const hasModifier = event.metaKey || event.ctrlKey;
+      if (!hasModifier || event.key.toLowerCase() !== "j") return;
+
       event.preventDefault();
-      setAssistantOpen((open) => {
-        const nextOpen = !open;
-        if (nextOpen && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
-          setCalculatorOpen(false);
-        }
-        return nextOpen;
-      });
+
+      if (event.shiftKey) {
+        setAssistantOpen((open) => {
+          const nextOpen = !open;
+          if (nextOpen && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
+            setCalculatorOpen(false);
+          }
+          return nextOpen;
+        });
+        return;
+      }
+
+      if (event.altKey) return;
+      addSlide(presentationId);
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [addSlide, presentationId]);
 
   useEffect(() => {
     const canvasRegion = canvasRegionRef.current;
@@ -469,7 +487,12 @@ export default function PresentationEditorPage() {
                 <Plus className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Add slide</TooltipContent>
+            <TooltipContent>
+              <span className="mr-2">Add slide</span>
+              <kbd className="rounded border border-background/35 bg-background/20 px-1.5 py-0.5 text-[10px] font-mono text-background">
+                Ctrl + J
+              </kbd>
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
