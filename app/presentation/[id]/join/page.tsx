@@ -108,6 +108,7 @@ function JoinPageInner({
           <PollPanel
             presentationId={presentationId}
             className="h-full"
+            isHost={false}
           />
         )}
       </div>

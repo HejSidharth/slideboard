@@ -11,9 +11,10 @@ import { BarChart3 } from "lucide-react";
 interface PollPanelProps {
   presentationId: string;
   className?: string;
+  isHost?: boolean;
 }
 
-export function PollPanel({ presentationId, className }: PollPanelProps) {
+export function PollPanel({ presentationId, className, isHost = true }: PollPanelProps) {
   const { participantId } = useAnonymousIdentity();
   const polls = useQuery(api.polls.list, {
     presentationId,
@@ -26,13 +27,17 @@ export function PollPanel({ presentationId, className }: PollPanelProps) {
         <div className="shrink-0 border-b border-border p-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium tracking-tight">Polls</h2>
-            <CreatePollDialog
-              presentationId={presentationId}
-              participantId={participantId}
-            />
+            {isHost && (
+              <CreatePollDialog
+                presentationId={presentationId}
+                participantId={participantId}
+              />
+            )}
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Create polls and vote anonymously in real-time.
+            {isHost
+              ? "Create polls and vote anonymously in real-time."
+              : "Vote on polls created by the presenter."}
           </p>
         </div>
 
@@ -43,7 +48,9 @@ export function PollPanel({ presentationId, className }: PollPanelProps) {
                 <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p className="text-sm">No polls yet.</p>
                 <p className="text-xs mt-1 opacity-70">
-                  Create a poll to gather responses.
+                  {isHost
+                    ? "Create a poll to gather responses."
+                    : "Waiting for the presenter to create a poll."}
                 </p>
               </div>
             </div>
