@@ -21,6 +21,17 @@ import type { StoreSnapshot, TLRecord } from "tldraw";
 
 const PERSIST_VERSION = 7;
 
+const EXCALIDRAW_DEFAULT_APP_STATE: Partial<AppState> = {
+  currentItemStrokeWidth: 1,
+};
+
+function createExcalidrawDefaultAppState(overrides: Partial<AppState> = {}): Partial<AppState> {
+  return {
+    ...EXCALIDRAW_DEFAULT_APP_STATE,
+    ...overrides,
+  };
+}
+
 function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -32,7 +43,7 @@ const createEmptySlide = (engine: CanvasEngine): SlideData => {
       engine,
       sceneVersion: 0,
       elements: [],
-      appState: {},
+      appState: createExcalidrawDefaultAppState(),
       files: {},
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -120,11 +131,11 @@ function createExcalidrawSlideFromProblem(problem: ExtractedProblem): Excalidraw
     engine: "excalidraw",
     sceneVersion: 0,
     elements: [imageElement],
-    appState: {
+    appState: createExcalidrawDefaultAppState({
       scrollX: 0,
       scrollY: 0,
       zoom: { value: 1 },
-    },
+    }),
     files,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -236,8 +247,8 @@ function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): Sl
         : [],
       appState:
         slide && typeof (slide as { appState?: unknown }).appState === "object" && (slide as { appState?: unknown }).appState
-          ? ((slide as { appState: Partial<AppState> }).appState)
-          : {},
+          ? createExcalidrawDefaultAppState((slide as { appState: Partial<AppState> }).appState)
+          : createExcalidrawDefaultAppState(),
       files:
         slide && typeof (slide as { files?: unknown }).files === "object" && (slide as { files?: unknown }).files
           ? ((slide as { files: BinaryFiles }).files)
@@ -586,7 +597,7 @@ export const usePresentationStore = create<PresentationStore>()(
                       engine: "excalidraw" as const,
                       sceneVersion: (s.sceneVersion ?? 0) + 1,
                       elements: [],
-                      appState: {},
+                      appState: createExcalidrawDefaultAppState(),
                       files: {},
                       createdAt: s.createdAt,
                       updatedAt: Date.now(),
@@ -661,7 +672,7 @@ export const usePresentationStore = create<PresentationStore>()(
                   ...s,
                   sceneVersion: (s.sceneVersion ?? 0) + 1,
                   elements: deepClone(s.problemBaselineElements),
-                  appState: deepClone(s.problemBaselineAppState ?? {}),
+                  appState: deepClone(createExcalidrawDefaultAppState(s.problemBaselineAppState ?? {})),
                   files: deepClone(s.problemBaselineFiles ?? {}),
                   updatedAt: Date.now(),
                 };
