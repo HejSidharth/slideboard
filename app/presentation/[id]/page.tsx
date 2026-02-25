@@ -80,6 +80,7 @@ export default function PresentationEditorPage() {
   const params = useParams();
   const router = useRouter();
   const presentationId = params.id as string;
+  const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [editedName, setEditedName] = useState("");
@@ -88,7 +89,8 @@ export default function PresentationEditorPage() {
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("slideboard-right-panel-tab");
-    if (stored === "assistant" || stored === "chat" || stored === "polls") return stored;
+    if (stored === "assistant") return stored;
+    if (hasConvex && (stored === "chat" || stored === "polls")) return stored;
     return null;
   });
   const [calculatorOpen, setCalculatorOpen] = useState<boolean>(() => {
@@ -565,14 +567,18 @@ export default function PresentationEditorPage() {
               <Button
                 variant={rightPanelTab === "chat" ? "default" : "ghost"}
                 size="icon"
+                disabled={!hasConvex}
                 onClick={() =>
+                  hasConvex &&
                   setRightPanelTab((tab) => (tab === "chat" ? null : "chat"))
                 }
               >
                 <MessageCircle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Chat</TooltipContent>
+            <TooltipContent>
+              {hasConvex ? "Chat" : "Chat (set NEXT_PUBLIC_CONVEX_URL)"}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -580,14 +586,18 @@ export default function PresentationEditorPage() {
               <Button
                 variant={rightPanelTab === "polls" ? "default" : "ghost"}
                 size="icon"
+                disabled={!hasConvex}
                 onClick={() =>
+                  hasConvex &&
                   setRightPanelTab((tab) => (tab === "polls" ? null : "polls"))
                 }
               >
                 <BarChart3 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Polls</TooltipContent>
+            <TooltipContent>
+              {hasConvex ? "Polls" : "Polls (set NEXT_PUBLIC_CONVEX_URL)"}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -681,14 +691,14 @@ export default function PresentationEditorPage() {
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <ChatPanel className="h-full" />
             </div>
-          ) : rightPanelTab === "chat" ? (
+          ) : rightPanelTab === "chat" && hasConvex ? (
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <ParticipantChatPanel
                 presentationId={presentationId}
                 className="h-full"
               />
             </div>
-          ) : rightPanelTab === "polls" ? (
+          ) : rightPanelTab === "polls" && hasConvex ? (
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <PollPanel
                 presentationId={presentationId}

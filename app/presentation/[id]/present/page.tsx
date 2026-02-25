@@ -38,6 +38,7 @@ export default function PresentationModePage() {
   const params = useParams();
   const router = useRouter();
   const presentationId = params.id as string;
+  const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
@@ -115,6 +116,7 @@ export default function PresentationModePage() {
           break;
         case "c":
         case "C":
+          if (!hasConvex) break;
           e.preventDefault();
           setSidebarTab((t) => (t === null ? "chat" : null));
           break;
@@ -123,7 +125,7 @@ export default function PresentationModePage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [presentation, presentationId, goToNextSlide, goToPreviousSlide, setCurrentSlide, handleExit, toggleFullscreen]);
+  }, [hasConvex, presentation, presentationId, goToNextSlide, goToPreviousSlide, setCurrentSlide, handleExit, toggleFullscreen]);
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -247,7 +249,7 @@ export default function PresentationModePage() {
           <div className="hidden items-center gap-4 text-sm text-white/72 md:flex">
             <span>← → Navigate</span>
             <span>F Fullscreen</span>
-            <span>C Chat</span>
+            {hasConvex && <span>C Chat</span>}
             <span>Esc Exit</span>
           </div>
 
@@ -290,94 +292,96 @@ export default function PresentationModePage() {
         )}
       </div>
 
-      {/* Chat/Polls floating toggle */}
-      <div
-        className={`absolute top-4 right-4 z-40 flex items-center gap-1 transition-opacity duration-300 ${
-          showControls || sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-      >
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`h-9 w-9 backdrop-blur-sm border ${
-            sidebarTab === "chat"
-              ? "bg-white/30 border-white/50 text-white"
-              : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
-          }`}
-          onClick={() => setSidebarTab((t) => (t === "chat" ? null : "chat"))}
-        >
-          <MessageCircle className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`h-9 w-9 backdrop-blur-sm border ${
-            sidebarTab === "polls"
-              ? "bg-white/30 border-white/50 text-white"
-              : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
-          }`}
-          onClick={() => setSidebarTab((t) => (t === "polls" ? null : "polls"))}
-        >
-          <BarChart3 className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Slide-out sidebar */}
-      <div
-        className={`absolute top-0 right-0 z-30 h-full w-[340px] transition-transform duration-300 ease-in-out ${
-          sidebarOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        <div className="h-full border-l border-white/10 bg-background/95 backdrop-blur-md shadow-2xl">
-          {/* Sidebar header with tab switcher */}
-          <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <div className="flex items-center gap-1 rounded-lg border border-border bg-muted p-0.5">
-              <Button
-                variant={sidebarTab === "chat" ? "default" : "ghost"}
-                size="sm"
-                className="h-6 gap-1 px-2.5 text-xs"
-                onClick={() => setSidebarTab("chat")}
-              >
-                <MessageCircle className="h-3 w-3" />
-                Chat
-              </Button>
-              <Button
-                variant={sidebarTab === "polls" ? "default" : "ghost"}
-                size="sm"
-                className="h-6 gap-1 px-2.5 text-xs"
-                onClick={() => setSidebarTab("polls")}
-              >
-                <BarChart3 className="h-3 w-3" />
-                Polls
-              </Button>
-            </div>
+      {hasConvex && (
+        <>
+          {/* Chat/Polls floating toggle */}
+          <div
+            className={`absolute top-4 right-4 z-40 flex items-center gap-1 transition-opacity duration-300 ${
+              showControls || sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
+          >
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
-              onClick={() => setSidebarTab(null)}
+              className={`h-9 w-9 backdrop-blur-sm border ${
+                sidebarTab === "chat"
+                  ? "bg-white/30 border-white/50 text-white"
+                  : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
+              }`}
+              onClick={() => setSidebarTab((t) => (t === "chat" ? null : "chat"))}
             >
-              <X className="h-4 w-4" />
+              <MessageCircle className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-9 w-9 backdrop-blur-sm border ${
+                sidebarTab === "polls"
+                  ? "bg-white/30 border-white/50 text-white"
+                  : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
+              }`}
+              onClick={() => setSidebarTab((t) => (t === "polls" ? null : "polls"))}
+            >
+              <BarChart3 className="h-4 w-4" />
             </Button>
           </div>
 
-          {/* Panel content */}
-          <div className="h-[calc(100%-44px)]">
-            {sidebarTab === "chat" && (
-              <ParticipantChatPanel
-                presentationId={presentationId}
-                className="h-full"
-              />
-            )}
-            {sidebarTab === "polls" && (
-              <PollPanel
-                presentationId={presentationId}
-                className="h-full"
-              />
-            )}
+          {/* Slide-out sidebar */}
+          <div
+            className={`absolute top-0 right-0 z-30 h-full w-[340px] transition-transform duration-300 ease-in-out ${
+              sidebarOpen ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
+            <div className="h-full border-l border-white/10 bg-background/95 backdrop-blur-md shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                <div className="flex items-center gap-1 rounded-lg border border-border bg-muted p-0.5">
+                  <Button
+                    variant={sidebarTab === "chat" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-6 gap-1 px-2.5 text-xs"
+                    onClick={() => setSidebarTab("chat")}
+                  >
+                    <MessageCircle className="h-3 w-3" />
+                    Chat
+                  </Button>
+                  <Button
+                    variant={sidebarTab === "polls" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-6 gap-1 px-2.5 text-xs"
+                    onClick={() => setSidebarTab("polls")}
+                  >
+                    <BarChart3 className="h-3 w-3" />
+                    Polls
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setSidebarTab(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="h-[calc(100%-44px)]">
+                {sidebarTab === "chat" && (
+                  <ParticipantChatPanel
+                    presentationId={presentationId}
+                    className="h-full"
+                  />
+                )}
+                {sidebarTab === "polls" && (
+                  <PollPanel
+                    presentationId={presentationId}
+                    className="h-full"
+                  />
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
