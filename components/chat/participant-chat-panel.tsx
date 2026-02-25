@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { nanoid } from "nanoid";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -20,9 +21,10 @@ export function ParticipantChatPanel({
   className,
 }: ParticipantChatPanelProps) {
   const { participantId, displayName, color } = useAnonymousIdentity();
-  const messages = useQuery(api.messages.list, { presentationId });
+  const messages = useQuery(api.messages.list, { presentationId, participantId });
   const sendMessage = useMutation(api.messages.send);
   const clearMessages = useMutation(api.messages.clear);
+  const toggleLike = useMutation(api.messages.toggleLike);
 
   const handleSend = useCallback(
     (content: string) => {
@@ -32,9 +34,17 @@ export function ParticipantChatPanel({
         displayName,
         color,
         content,
+        clientMessageId: nanoid(),
       });
     },
     [sendMessage, presentationId, participantId, displayName, color]
+  );
+
+  const handleToggleLike = useCallback(
+    (messageId: string) => {
+      toggleLike({ messageId: messageId as any, participantId });
+    },
+    [toggleLike, participantId]
   );
 
   const handleClear = useCallback(() => {
@@ -89,6 +99,7 @@ export function ParticipantChatPanel({
         <ParticipantChatMessages
           messages={messages ?? []}
           currentParticipantId={participantId}
+          onToggleLike={handleToggleLike}
         />
 
         <ChatInput

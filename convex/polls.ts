@@ -37,12 +37,25 @@ export const list = query({
 
         const resultsVisible = poll.resultsVisible === true;
 
+        // Poll likes
+        const pollLikes = await ctx.db
+          .query("pollLikes")
+          .withIndex("by_poll", (q: any) => q.eq("pollId", poll._id))
+          .collect();
+
+        const pollLikeCount = pollLikes.length;
+        const pollLiked = pollLikes.some(
+          (l) => l.participantId === args.participantId
+        );
+
         return {
           ...poll,
           resultsVisible,
           voteCounts: resultsVisible ? voteCounts : null,
           totalVotes: votes.length,
           myVote,
+          pollLikeCount,
+          pollLiked,
         };
       })
     );
@@ -51,16 +64,56 @@ export const list = query({
   },
 });
 
+/**
+ * Helper: close all currently active polls for a presentation.
+ * Used to enforce single-active-poll mode.
+ */
+async function closeActivePolls(
+  ctx: { db: any },
+  presentationId: string,
+  excludePollId?: string
+) {
+  const activePolls = await ctx.db
+    .query("polls")
+    .withIndex("by_presentation", (q: any) =>
+      q.eq("presentationId", presentationId)
+    )
+    .collect();
+
+  for (const poll of activePolls) {
+    if (poll.isActive && poll._id !== excludePollId) {
+      await ctx.db.patch(poll._id, { isActive: false });
+    }
+  }
+}
+
 export const create = mutation({
   args: {
     presentationId: v.string(),
     question: v.string(),
     options: v.array(v.string()),
     createdBy: v.string(),
+    clientRequestId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (!args.question.trim()) return null;
     if (args.options.length < 2) return null;
+
+    // Deduplicate: if clientRequestId provided, check for existing poll
+    if (args.clientRequestId) {
+      const existing = await ctx.db
+        .query("polls")
+        .withIndex("by_client_request", (q: any) =>
+          q
+            .eq("presentationId", args.presentationId)
+            .eq("clientRequestId", args.clientRequestId)
+        )
+        .first();
+      if (existing) return existing._id;
+    }
+
+    // Single active poll: close all other active polls
+    await closeActivePolls(ctx, args.presentationId);
 
     const id = await ctx.db.insert("polls", {
       presentationId: args.presentationId,
@@ -69,6 +122,7 @@ export const create = mutation({
       createdBy: args.createdBy,
       isActive: true,
       resultsVisible: false,
+      clientRequestId: args.clientRequestId,
       createdAt: Date.now(),
     });
     return id;
@@ -97,6 +151,9 @@ export const reopen = mutation({
   handler: async (ctx, args) => {
     const poll = await ctx.db.get(args.pollId);
     if (!poll || poll.createdBy !== args.participantId) return null;
+
+    // Single active poll: close all other active polls first
+    await closeActivePolls(ctx, poll.presentationId, args.pollId);
 
     await ctx.db.patch(args.pollId, { isActive: true });
     return args.pollId;
@@ -134,6 +191,16 @@ export const remove = mutation({
 
     for (const vote of votes) {
       await ctx.db.delete(vote._id);
+    }
+
+    // Also delete poll likes
+    const pollLikes = await ctx.db
+      .query("pollLikes")
+      .withIndex("by_poll", (q: any) => q.eq("pollId", args.pollId))
+      .collect();
+
+    for (const like of pollLikes) {
+      await ctx.db.delete(like._id);
     }
 
     await ctx.db.delete(args.pollId);
@@ -176,5 +243,35 @@ export const vote = mutation({
       createdAt: Date.now(),
     });
     return id;
+  },
+});
+
+export const togglePollLike = mutation({
+  args: {
+    pollId: v.id("polls"),
+    participantId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const poll = await ctx.db.get(args.pollId);
+    if (!poll) return null;
+
+    const existing = await ctx.db
+      .query("pollLikes")
+      .withIndex("by_poll_participant", (q: any) =>
+        q.eq("pollId", args.pollId).eq("participantId", args.participantId)
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.delete(existing._id);
+      return { action: "unliked" as const };
+    }
+
+    await ctx.db.insert("pollLikes", {
+      pollId: args.pollId,
+      participantId: args.participantId,
+      createdAt: Date.now(),
+    });
+    return { action: "liked" as const };
   },
 });

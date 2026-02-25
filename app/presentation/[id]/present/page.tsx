@@ -5,10 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
 import { ParticipantChatPanel } from "@/components/chat/participant-chat-panel";
 import { PollPanel } from "@/components/polls/poll-panel";
-import { X, ChevronLeft, ChevronRight, Expand, Shrink, MessageCircle, BarChart3 } from "lucide-react";
+import { usePollNotifications } from "@/hooks/use-poll-notifications";
+import { useChatNotifications } from "@/hooks/use-chat-notifications";
+import { useAnonymousIdentity } from "@/hooks/use-anonymous-identity";
+import { X, ChevronLeft, ChevronRight, Expand, Shrink, MessageCircle, BarChart3, Bell, BellOff } from "lucide-react";
 
 const TldrawWrapper = dynamic(
   () => import("@/components/editor/tldraw-wrapper"),
@@ -46,6 +50,19 @@ export default function PresentationModePage() {
   type SidebarTab = "chat" | "polls" | null;
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>(null);
   const sidebarOpen = sidebarTab !== null;
+
+  // Chat toast notifications (toggleable, persisted to localStorage)
+  const [showChatToasts, setShowChatToasts] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("slideboard-chat-toasts") !== "false";
+  });
+  const toggleChatToasts = useCallback(() => {
+    setShowChatToasts((prev) => {
+      const next = !prev;
+      localStorage.setItem("slideboard-chat-toasts", String(next));
+      return next;
+    });
+  }, []);
 
   const presentation = usePresentationStore((s) =>
     s.presentations.find((p) => p.id === presentationId)
@@ -293,95 +310,159 @@ export default function PresentationModePage() {
       </div>
 
       {hasConvex && (
-        <>
-          {/* Chat/Polls floating toggle */}
-          <div
-            className={`absolute top-4 right-4 z-40 flex items-center gap-1 transition-opacity duration-300 ${
-              showControls || sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-            }`}
-          >
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-9 w-9 backdrop-blur-sm border ${
-                sidebarTab === "chat"
-                  ? "bg-white/30 border-white/50 text-white"
-                  : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
-              }`}
-              onClick={() => setSidebarTab((t) => (t === "chat" ? null : "chat"))}
-            >
-              <MessageCircle className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-9 w-9 backdrop-blur-sm border ${
-                sidebarTab === "polls"
-                  ? "bg-white/30 border-white/50 text-white"
-                  : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
-              }`}
-              onClick={() => setSidebarTab((t) => (t === "polls" ? null : "polls"))}
-            >
-              <BarChart3 className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Slide-out sidebar */}
-          <div
-            className={`absolute top-0 right-0 z-30 h-full w-[340px] transition-transform duration-300 ease-in-out ${
-              sidebarOpen ? "translate-x-0" : "translate-x-full"
-            }`}
-          >
-            <div className="h-full border-l border-white/10 bg-background/95 backdrop-blur-md shadow-2xl">
-              <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                <div className="flex items-center gap-1 rounded-lg border border-border bg-muted p-0.5">
-                  <Button
-                    variant={sidebarTab === "chat" ? "default" : "ghost"}
-                    size="sm"
-                    className="h-6 gap-1 px-2.5 text-xs"
-                    onClick={() => setSidebarTab("chat")}
-                  >
-                    <MessageCircle className="h-3 w-3" />
-                    Chat
-                  </Button>
-                  <Button
-                    variant={sidebarTab === "polls" ? "default" : "ghost"}
-                    size="sm"
-                    className="h-6 gap-1 px-2.5 text-xs"
-                    onClick={() => setSidebarTab("polls")}
-                  >
-                    <BarChart3 className="h-3 w-3" />
-                    Polls
-                  </Button>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setSidebarTab(null)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="h-[calc(100%-44px)]">
-                {sidebarTab === "chat" && (
-                  <ParticipantChatPanel
-                    presentationId={presentationId}
-                    className="h-full"
-                  />
-                )}
-                {sidebarTab === "polls" && (
-                  <PollPanel
-                    presentationId={presentationId}
-                    className="h-full"
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        </>
+        <PresentModeConvexOverlay
+          presentationId={presentationId}
+          showControls={showControls}
+          sidebarTab={sidebarTab}
+          setSidebarTab={setSidebarTab}
+          sidebarOpen={sidebarOpen}
+          showChatToasts={showChatToasts}
+          toggleChatToasts={toggleChatToasts}
+        />
       )}
     </div>
+  );
+}
+
+/**
+ * Inner component mounted only when Convex is available.
+ * Allows hooks (usePollNotifications, useChatNotifications) to be called
+ * unconditionally inside a component that's always within <ConvexProvider>.
+ */
+function PresentModeConvexOverlay({
+  presentationId,
+  showControls,
+  sidebarTab,
+  setSidebarTab,
+  sidebarOpen,
+  showChatToasts,
+  toggleChatToasts,
+}: {
+  presentationId: string;
+  showControls: boolean;
+  sidebarTab: "chat" | "polls" | null;
+  setSidebarTab: React.Dispatch<React.SetStateAction<"chat" | "polls" | null>>;
+  sidebarOpen: boolean;
+  showChatToasts: boolean;
+  toggleChatToasts: () => void;
+}) {
+  const { participantId } = useAnonymousIdentity();
+
+  // Always subscribe to notifications, regardless of sidebar state
+  usePollNotifications(presentationId);
+  useChatNotifications(presentationId, participantId, showChatToasts);
+
+  return (
+    <>
+      {/* Chat/Polls/Notifications floating toggle */}
+      <div
+        className={`absolute top-4 right-4 z-40 flex items-center gap-1 transition-opacity duration-300 ${
+          showControls || sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-9 w-9 backdrop-blur-sm border ${
+                showChatToasts
+                  ? "bg-white/30 border-white/50 text-white"
+                  : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
+              }`}
+              onClick={toggleChatToasts}
+            >
+              {showChatToasts ? (
+                <Bell className="h-4 w-4" />
+              ) : (
+                <BellOff className="h-4 w-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>{showChatToasts ? "Mute chat notifications" : "Enable chat notifications"}</p>
+          </TooltipContent>
+        </Tooltip>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`h-9 w-9 backdrop-blur-sm border ${
+            sidebarTab === "chat"
+              ? "bg-white/30 border-white/50 text-white"
+              : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
+          }`}
+          onClick={() => setSidebarTab((t) => (t === "chat" ? null : "chat"))}
+        >
+          <MessageCircle className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`h-9 w-9 backdrop-blur-sm border ${
+            sidebarTab === "polls"
+              ? "bg-white/30 border-white/50 text-white"
+              : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
+          }`}
+          onClick={() => setSidebarTab((t) => (t === "polls" ? null : "polls"))}
+        >
+          <BarChart3 className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Slide-out sidebar — full width on mobile, 340px on sm+ */}
+      <div
+        className={`absolute top-0 right-0 z-30 h-full w-full sm:w-[340px] transition-transform duration-300 ease-in-out ${
+          sidebarOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="h-full border-l border-white/10 bg-background/95 backdrop-blur-md shadow-2xl">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-muted p-0.5">
+              <Button
+                variant={sidebarTab === "chat" ? "default" : "ghost"}
+                size="sm"
+                className="h-6 gap-1 px-2.5 text-xs"
+                onClick={() => setSidebarTab("chat")}
+              >
+                <MessageCircle className="h-3 w-3" />
+                Chat
+              </Button>
+              <Button
+                variant={sidebarTab === "polls" ? "default" : "ghost"}
+                size="sm"
+                className="h-6 gap-1 px-2.5 text-xs"
+                onClick={() => setSidebarTab("polls")}
+              >
+                <BarChart3 className="h-3 w-3" />
+                Polls
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setSidebarTab(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="h-[calc(100%-44px)]">
+            {sidebarTab === "chat" && (
+              <ParticipantChatPanel
+                presentationId={presentationId}
+                className="h-full"
+              />
+            )}
+            {sidebarTab === "polls" && (
+              <PollPanel
+                presentationId={presentationId}
+                className="h-full"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

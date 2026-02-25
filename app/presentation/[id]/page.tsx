@@ -26,6 +26,9 @@ import { CalculatorPanel } from "@/components/editor/calculator-panel";
 import { CalculatorDockPanel } from "@/components/editor/calculator-panel";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
 import type { CalculatorMode } from "@/components/editor/calculator-panel";
+import { usePollNotifications } from "@/hooks/use-poll-notifications";
+import { useChatNotifications } from "@/hooks/use-chat-notifications";
+import { useAnonymousIdentity } from "@/hooks/use-anonymous-identity";
 import {
   ArrowLeft,
   Play,
@@ -37,6 +40,8 @@ import {
   MessageCircle,
   BarChart3,
   Share2,
+  Bell,
+  BellOff,
 } from "lucide-react";
 import type { AppState, BinaryFiles, Editor, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
 
@@ -102,6 +107,17 @@ export default function PresentationEditorPage() {
     const stored = localStorage.getItem("slideboard-calculator-mode");
     return stored === "sheet" ? "sheet" : "floating";
   });
+  const [showChatToasts, setShowChatToasts] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("slideboard-chat-toasts") !== "false";
+  });
+  const toggleChatToasts = useCallback(() => {
+    setShowChatToasts((prev) => {
+      const next = !prev;
+      localStorage.setItem("slideboard-chat-toasts", String(next));
+      return next;
+    });
+  }, []);
   const canvasRegionRef = useRef<HTMLDivElement | null>(null);
   const wheelDebugCountRef = useRef(0);
   const excalidrawSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -498,7 +514,7 @@ export default function PresentationEditorPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => addSlide(presentationId)}>
@@ -599,6 +615,28 @@ export default function PresentationEditorPage() {
               {hasConvex ? "Polls" : "Polls (set NEXT_PUBLIC_CONVEX_URL)"}
             </TooltipContent>
           </Tooltip>
+
+          {hasConvex && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showChatToasts ? "ghost" : "ghost"}
+                  size="icon"
+                  onClick={toggleChatToasts}
+                  className={showChatToasts ? "" : "text-muted-foreground"}
+                >
+                  {showChatToasts ? (
+                    <Bell className="h-4 w-4" />
+                  ) : (
+                    <BellOff className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {showChatToasts ? "Mute notifications" : "Enable notifications"}
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -747,6 +785,31 @@ export default function PresentationEditorPage() {
         open={shareDialogOpen}
         onOpenChange={setShareDialogOpen}
       />
+
+      {hasConvex && (
+        <EditorConvexNotifications
+          presentationId={presentationId}
+          showChatToasts={showChatToasts}
+        />
+      )}
     </div>
   );
+}
+
+/**
+ * Inner component mounted only when Convex is available.
+ * Subscribes to poll/chat notifications at the editor page level
+ * so toasts fire even when the Chat/Polls panels aren't open.
+ */
+function EditorConvexNotifications({
+  presentationId,
+  showChatToasts,
+}: {
+  presentationId: string;
+  showChatToasts: boolean;
+}) {
+  const { participantId } = useAnonymousIdentity();
+  usePollNotifications(presentationId);
+  useChatNotifications(presentationId, participantId, showChatToasts);
+  return null;
 }

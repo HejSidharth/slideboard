@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useMutation } from "convex/react";
+import { nanoid } from "nanoid";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +68,7 @@ export function CreatePollDialog({
       question: trimmedQuestion,
       options: validOptions,
       createdBy: participantId,
+      clientRequestId: nanoid(),
     });
 
     setQuestion("");

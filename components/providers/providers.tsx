@@ -3,6 +3,7 @@
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import { useMemo } from "react";
 
 interface ProvidersProps {
@@ -26,6 +27,7 @@ export function Providers({ children }: ProvidersProps) {
     >
       <TooltipProvider delayDuration={300}>
         {children}
+        <Toaster position="top-right" richColors closeButton />
       </TooltipProvider>
     </NextThemesProvider>
   );
