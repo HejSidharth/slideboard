@@ -89,7 +89,7 @@ export function SlideThumbnail({
   const shapeCount =
     slide.engine === "tldraw"
       ? countShapesInSnapshot(slide.snapshot)
-      : slide.elements.filter((element) => !(element as { isDeleted?: boolean }).isDeleted).length;
+      : (slide.elements ?? []).filter((element) => !(element as { isDeleted?: boolean }).isDeleted).length;
   const hasContent = shapeCount > 0;
   const hasProblemState =
     slide.engine === "tldraw"

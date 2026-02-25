@@ -18,8 +18,16 @@ import type {
 } from "@/types";
 import { CURRENT_SCHEMA_VERSION } from "@/types";
 import type { StoreSnapshot, TLRecord } from "tldraw";
+import {
+  setSlideSnapshot,
+  deleteSlideSnapshot,
+  deleteSlideSnapshotsByPresentation,
+  setPresentationMeta,
+  deletePresentationMeta,
+  type StoredSlideSnapshot,
+} from "@/lib/slide-cache";
 
-const PERSIST_VERSION = 7;
+const PERSIST_VERSION = 8;
 
 const EXCALIDRAW_DEFAULT_APP_STATE: Partial<AppState> = {
   currentItemStrokeWidth: 1,
@@ -34,6 +42,68 @@ function createExcalidrawDefaultAppState(overrides: Partial<AppState> = {}): Par
 
 function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+// ---------------------------------------------------------------------------
+// IndexedDB persistence helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Persist a slide's canvas data to IndexedDB (the real storage layer for
+ * canvas content). localStorage only holds tiny metadata now.
+ */
+function persistSlideToCache(
+  slide: SlideData,
+  presentationId: string,
+  slideIndex: number,
+): void {
+  const snapshot: StoredSlideSnapshot = {
+    slideId: slide.id,
+    presentationId,
+    slideIndex,
+    engine: slide.engine,
+    sceneVersion: slide.sceneVersion,
+    snapshotJson: slide.engine === "tldraw" && slide.snapshot
+      ? JSON.stringify(slide.snapshot)
+      : null,
+    elementsJson: slide.engine === "excalidraw"
+      ? JSON.stringify(slide.elements)
+      : null,
+    appStateJson: slide.engine === "excalidraw"
+      ? JSON.stringify(slide.appState)
+      : null,
+    filesJson: slide.engine === "excalidraw"
+      ? JSON.stringify(slide.files)
+      : null,
+    createdAt: slide.createdAt,
+    updatedAt: slide.updatedAt,
+    syncedAt: null,
+  };
+  // Fire-and-forget — don't block the Zustand update
+  setSlideSnapshot(snapshot).catch((err) =>
+    console.error("[store] Failed to persist slide to IndexedDB", err),
+  );
+}
+
+/**
+ * Persist presentation metadata to IndexedDB (used by sync layer).
+ */
+function persistMetaToCache(presentation: Presentation): void {
+  setPresentationMeta({
+    presentationId: presentation.id,
+    name: presentation.name,
+    canvasEngine: presentation.canvasEngine,
+    folderId: presentation.folderId,
+    currentSlideIndex: presentation.currentSlideIndex,
+    slideIds: presentation.slides.map((s) => s.id),
+    version: presentation.version,
+    createdAt: presentation.createdAt,
+    updatedAt: presentation.updatedAt,
+    syncedAt: null,
+    cloudSynced: false,
+  }).catch((err) =>
+    console.error("[store] Failed to persist presentation meta to IndexedDB", err),
+  );
 }
 
 const createEmptySlide = (engine: CanvasEngine): SlideData => {
@@ -316,14 +386,17 @@ export const usePresentationStore = create<PresentationStore>()(
     (set, get) => ({
       folders: [],
       presentations: [],
-      currentPresentationId: null,
-
-      createPresentation: (name: string, folderId: string | null = null, canvasEngine: CanvasEngine = "tldraw") => {
+      currentPresentationId: null,      createPresentation: (name: string, folderId: string | null = null, canvasEngine: CanvasEngine = "tldraw") => {
         const presentation = createDefaultPresentation(name, folderId, canvasEngine);
         set((state) => ({
           presentations: [...state.presentations, presentation],
           currentPresentationId: presentation.id,
         }));
+        // Persist to IndexedDB
+        persistMetaToCache(presentation);
+        presentation.slides.forEach((slide, i) =>
+          persistSlideToCache(slide, presentation.id, i),
+        );
         return presentation.id;
       },
 
@@ -335,6 +408,9 @@ export const usePresentationStore = create<PresentationStore>()(
               ? null
               : state.currentPresentationId,
         }));
+        // Clean up IndexedDB
+        deleteSlideSnapshotsByPresentation(id).catch(console.error);
+        deletePresentationMeta(id).catch(console.error);
       },
 
       renamePresentation: (id: string, name: string) => {
@@ -343,6 +419,8 @@ export const usePresentationStore = create<PresentationStore>()(
             p.id === id ? { ...p, name, updatedAt: Date.now() } : p
           ),
         }));
+        const updated = get().presentations.find((p) => p.id === id);
+        if (updated) persistMetaToCache(updated);
       },
 
       movePresentationToFolder: (id: string, folderId: string | null) => {
@@ -351,6 +429,8 @@ export const usePresentationStore = create<PresentationStore>()(
             p.id === id ? { ...p, folderId, updatedAt: Date.now() } : p
           ),
         }));
+        const updated = get().presentations.find((p) => p.id === id);
+        if (updated) persistMetaToCache(updated);
       },
 
       createFolder: (name: string, parentId: string | null = null) => {
@@ -425,6 +505,12 @@ export const usePresentationStore = create<PresentationStore>()(
           presentations: [...state.presentations, newPresentation],
         }));
 
+        // Persist new presentation to IndexedDB
+        persistMetaToCache(newPresentation);
+        newPresentation.slides.forEach((slide, i) =>
+          persistSlideToCache(slide, newPresentation.id, i),
+        );
+
         return newPresentation.id;
       },
 
@@ -447,36 +533,48 @@ export const usePresentationStore = create<PresentationStore>()(
               newSlide,
               ...p.slides.slice(p.currentSlideIndex + 1),
             ];
-            return {
-              ...p,
-              slides: newSlides,
-              currentSlideIndex: p.currentSlideIndex + 1,
-              updatedAt: Date.now(),
-            };
+            const insertedIndex = p.currentSlideIndex + 1;
+            // Persist new slide + updated meta to IndexedDB
+            persistSlideToCache(newSlide, p.id, insertedIndex);
+            // Re-index all slides after the insertion point
+            newSlides.forEach((s, i) => {
+              if (i > insertedIndex) persistSlideToCache(s, p.id, i);
+            });
+            const updated = { ...p, slides: newSlides, currentSlideIndex: insertedIndex, updatedAt: Date.now() };
+            persistMetaToCache(updated);
+            return updated;
           }),
         }));
       },
 
       deleteSlide: (presentationId: string, slideIndex: number) => {
+        let deletedSlideId: string | null = null;
         set((state) => ({
           presentations: state.presentations.map((p) => {
             if (p.id !== presentationId) return p;
             if (p.slides.length <= 1) return p;
 
+            deletedSlideId = p.slides[slideIndex]?.id ?? null;
             const newSlides = p.slides.filter((_, i) => i !== slideIndex);
             const newCurrentIndex = Math.min(
               p.currentSlideIndex,
               newSlides.length - 1
             );
-
-            return {
+            const updated = {
               ...p,
               slides: newSlides,
               currentSlideIndex: newCurrentIndex >= 0 ? newCurrentIndex : 0,
               updatedAt: Date.now(),
             };
+            // Re-index remaining slides in IndexedDB
+            newSlides.forEach((s, i) => persistSlideToCache(s, p.id, i));
+            persistMetaToCache(updated);
+            return updated;
           }),
         }));
+        if (deletedSlideId) {
+          deleteSlideSnapshot(deletedSlideId).catch(console.error);
+        }
       },
 
       duplicateSlide: (presentationId: string, slideIndex: number) => {
@@ -500,12 +598,18 @@ export const usePresentationStore = create<PresentationStore>()(
               ...p.slides.slice(slideIndex + 1),
             ];
 
-            return {
+            const updated = {
               ...p,
               slides: newSlides,
               currentSlideIndex: slideIndex + 1,
               updatedAt: Date.now(),
             };
+            // Persist cloned slide and re-index all slides after insertion
+            newSlides.forEach((s, i) => {
+              if (i >= slideIndex + 1) persistSlideToCache(s, p.id, i);
+            });
+            persistMetaToCache(updated);
+            return updated;
           }),
         }));
       },
@@ -538,12 +642,16 @@ export const usePresentationStore = create<PresentationStore>()(
               newCurrentIndex++;
             }
 
-            return {
+            const updated = {
               ...p,
               slides: newSlides,
               currentSlideIndex: newCurrentIndex,
               updatedAt: Date.now(),
             };
+            // Re-index all slides in IndexedDB to reflect new order
+            newSlides.forEach((s, i) => persistSlideToCache(s, p.id, i));
+            persistMetaToCache(updated);
+            return updated;
           }),
         }));
       },
@@ -557,9 +665,10 @@ export const usePresentationStore = create<PresentationStore>()(
           presentations: state.presentations.map((p) => {
             if (p.id !== presentationId) return p;
 
-            const newSlides = p.slides.map((s, i) =>
-              i === slideIndex
-                ? s.engine === "tldraw"
+            const newSlides = p.slides.map((s, i) => {
+              if (i !== slideIndex) return s;
+              const updated =
+                s.engine === "tldraw"
                   ? {
                       ...s,
                       snapshot: "snapshot" in data ? (data as Partial<TldrawSlideData>).snapshot ?? null : s.snapshot,
@@ -571,9 +680,10 @@ export const usePresentationStore = create<PresentationStore>()(
                       appState: "appState" in data ? (data as Partial<ExcalidrawSlideData>).appState ?? {} : s.appState,
                       files: "files" in data ? (data as Partial<ExcalidrawSlideData>).files ?? {} : s.files,
                       updatedAt: Date.now(),
-                    }
-                : s,
-            );
+                    };
+              persistSlideToCache(updated, p.id, i);
+              return updated;
+            });
 
             return {
               ...p,
@@ -589,29 +699,32 @@ export const usePresentationStore = create<PresentationStore>()(
           presentations: state.presentations.map((p) => {
             if (p.id !== presentationId) return p;
 
+            const existingSlide = p.slides[slideIndex];
+            const clearedSlide: SlideData =
+              p.canvasEngine === "excalidraw"
+                ? {
+                    id: existingSlide?.id ?? nanoid(),
+                    engine: "excalidraw" as const,
+                    sceneVersion: (existingSlide?.sceneVersion ?? 0) + 1,
+                    elements: [],
+                    appState: createExcalidrawDefaultAppState(),
+                    files: {},
+                    createdAt: existingSlide?.createdAt ?? Date.now(),
+                    updatedAt: Date.now(),
+                  }
+                : {
+                    id: existingSlide?.id ?? nanoid(),
+                    engine: "tldraw" as const,
+                    sceneVersion: (existingSlide?.sceneVersion ?? 0) + 1,
+                    snapshot: null,
+                    createdAt: existingSlide?.createdAt ?? Date.now(),
+                    updatedAt: Date.now(),
+                  };
+
             const newSlides = p.slides.map((s, i) =>
-              i === slideIndex
-                ? p.canvasEngine === "excalidraw"
-                  ? {
-                      id: s.id,
-                      engine: "excalidraw" as const,
-                      sceneVersion: (s.sceneVersion ?? 0) + 1,
-                      elements: [],
-                      appState: createExcalidrawDefaultAppState(),
-                      files: {},
-                      createdAt: s.createdAt,
-                      updatedAt: Date.now(),
-                    }
-                  : {
-                      id: s.id,
-                      engine: "tldraw" as const,
-                      sceneVersion: (s.sceneVersion ?? 0) + 1,
-                      snapshot: null,
-                      createdAt: s.createdAt,
-                      updatedAt: Date.now(),
-                    }
-                : s
+              i === slideIndex ? clearedSlide : s
             );
+            persistSlideToCache(clearedSlide, p.id, slideIndex);
 
             return {
               ...p,
@@ -630,8 +743,9 @@ export const usePresentationStore = create<PresentationStore>()(
             const newSlides = p.slides.map((s, i) => {
               if (i !== slideIndex) return s;
 
+              let updated: SlideData;
               if (s.engine === "excalidraw") {
-                return {
+                updated = {
                   ...s,
                   problemBaselineElements: deepClone(s.elements),
                   problemBaselineAppState: deepClone(s.appState),
@@ -639,14 +753,16 @@ export const usePresentationStore = create<PresentationStore>()(
                   problemBaselineUpdatedAt: Date.now(),
                   updatedAt: Date.now(),
                 };
+              } else {
+                updated = {
+                  ...s,
+                  problemBaselineSnapshot: s.snapshot ? deepClone(s.snapshot) : null,
+                  problemBaselineUpdatedAt: Date.now(),
+                  updatedAt: Date.now(),
+                };
               }
-
-              return {
-                ...s,
-                problemBaselineSnapshot: s.snapshot ? deepClone(s.snapshot) : null,
-                problemBaselineUpdatedAt: Date.now(),
-                updatedAt: Date.now(),
-              };
+              persistSlideToCache(updated, p.id, i);
+              return updated;
             });
 
             return {
@@ -666,9 +782,10 @@ export const usePresentationStore = create<PresentationStore>()(
             const newSlides = p.slides.map((s, i) => {
               if (i !== slideIndex) return s;
 
+              let updated: SlideData;
               if (s.engine === "excalidraw") {
                 if (!s.problemBaselineElements) return s;
-                return {
+                updated = {
                   ...s,
                   sceneVersion: (s.sceneVersion ?? 0) + 1,
                   elements: deepClone(s.problemBaselineElements),
@@ -676,15 +793,17 @@ export const usePresentationStore = create<PresentationStore>()(
                   files: deepClone(s.problemBaselineFiles ?? {}),
                   updatedAt: Date.now(),
                 };
+              } else {
+                if (s.problemBaselineSnapshot === undefined) return s;
+                updated = {
+                  ...s,
+                  sceneVersion: (s.sceneVersion ?? 0) + 1,
+                  snapshot: s.problemBaselineSnapshot ? deepClone(s.problemBaselineSnapshot) : null,
+                  updatedAt: Date.now(),
+                };
               }
-
-              if (s.problemBaselineSnapshot === undefined) return s;
-              return {
-                ...s,
-                sceneVersion: (s.sceneVersion ?? 0) + 1,
-                snapshot: s.problemBaselineSnapshot ? deepClone(s.problemBaselineSnapshot) : null,
-                updatedAt: Date.now(),
-              };
+              persistSlideToCache(updated, p.id, i);
+              return updated;
             });
 
             return {
@@ -704,8 +823,9 @@ export const usePresentationStore = create<PresentationStore>()(
             const newSlides = p.slides.map((s, i) => {
               if (i !== slideIndex) return s;
 
+              let updated: SlideData;
               if (s.engine === "excalidraw") {
-                return {
+                updated = {
                   ...s,
                   problemBaselineElements: undefined,
                   problemBaselineAppState: undefined,
@@ -713,14 +833,16 @@ export const usePresentationStore = create<PresentationStore>()(
                   problemBaselineUpdatedAt: undefined,
                   updatedAt: Date.now(),
                 };
+              } else {
+                updated = {
+                  ...s,
+                  problemBaselineSnapshot: undefined,
+                  problemBaselineUpdatedAt: undefined,
+                  updatedAt: Date.now(),
+                };
               }
-
-              return {
-                ...s,
-                problemBaselineSnapshot: undefined,
-                problemBaselineUpdatedAt: undefined,
-                updatedAt: Date.now(),
-              };
+              persistSlideToCache(updated, p.id, i);
+              return updated;
             });
 
             return {
@@ -728,6 +850,18 @@ export const usePresentationStore = create<PresentationStore>()(
               slides: newSlides,
               updatedAt: Date.now(),
             };
+          }),
+        }));
+      },
+
+      hydrateSlides: (presentationId: string, slides: SlideData[]) => {
+        if (slides.length === 0) return;
+        const slideMap = new Map(slides.map((s) => [s.id, s]));
+        set((state) => ({
+          presentations: state.presentations.map((p) => {
+            if (p.id !== presentationId) return p;
+            const hydrated = p.slides.map((s) => slideMap.get(s.id) ?? s);
+            return { ...p, slides: hydrated };
           }),
         }));
       },
@@ -808,6 +942,12 @@ export const usePresentationStore = create<PresentationStore>()(
             presentations: [...state.presentations, newPresentation],
           }));
 
+          // Persist imported presentation to IndexedDB
+          persistMetaToCache(newPresentation);
+          newPresentation.slides.forEach((slide, i) =>
+            persistSlideToCache(slide, newPresentation.id, i),
+          );
+
           return newPresentation.id;
         } catch (error) {
           console.error("Failed to import presentation:", error);
@@ -828,12 +968,20 @@ export const usePresentationStore = create<PresentationStore>()(
               return createTldrawSlideFromProblem(problem);
             });
 
-            return {
+            const allSlides = [...p.slides, ...newSlides];
+            const updated = {
               ...p,
-              slides: [...p.slides, ...newSlides],
+              slides: allSlides,
               currentSlideIndex: p.slides.length,
               updatedAt: Date.now(),
             };
+
+            // Persist new slides to IndexedDB
+            newSlides.forEach((s, i) =>
+              persistSlideToCache(s, p.id, p.slides.length + i),
+            );
+            persistMetaToCache(updated);
+            return updated;
           }),
         }));
       },
@@ -842,6 +990,46 @@ export const usePresentationStore = create<PresentationStore>()(
       name: "slideboard-storage",
       version: PERSIST_VERSION,
       storage: createJSONStorage(() => localStorage),
+      /**
+       * Normalize slide stubs on every rehydration so that slides deserialized
+       * from localStorage always have the required canvas fields (elements:[],
+       * snapshot:null, etc.) even when no version migration occurs.
+       */
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const normalized = state.presentations.map((p) => ({
+          ...p,
+          slides: p.slides.map((s) => normalizeSlideData(s, p.canvasEngine)),
+        }));
+        usePresentationStore.setState({ presentations: normalized });
+      },
+      /**
+       * Only persist the lightweight fields to localStorage.
+       * Canvas data (slide snapshots, elements, files) is stored in IndexedDB
+       * via the persistSlideToCache helpers above — keeping localStorage small.
+       */
+      partialize: (state) => ({
+        folders: state.folders,
+        currentPresentationId: state.currentPresentationId,
+        presentations: state.presentations.map((p) => ({
+          id: p.id,
+          name: p.name,
+          canvasEngine: p.canvasEngine,
+          folderId: p.folderId,
+          currentSlideIndex: p.currentSlideIndex,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+          version: p.version,
+          // Store only slide stubs (id + engine + timestamps) — no canvas data
+          slides: p.slides.map((s) => ({
+            id: s.id,
+            engine: s.engine,
+            sceneVersion: s.sceneVersion,
+            createdAt: s.createdAt,
+            updatedAt: s.updatedAt,
+          })),
+        })),
+      }),
       migrate: (persistedState) => {
         const state = persistedState as Partial<PresentationStore> | undefined;
         if (!state) {

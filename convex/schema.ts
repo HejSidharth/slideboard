@@ -2,6 +2,71 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // -------------------------------------------------------------------------
+  // Slide canvas data storage tables
+  // -------------------------------------------------------------------------
+
+  /**
+   * One row per presentation. Stores metadata only — canvas data lives in
+   * the `slides` table. The ownerTokenHash is a SHA-256 hex of the raw owner
+   * token stored in the browser's localStorage. It is never returned to the
+   * client.
+   */
+  storedPresentations: defineTable({
+    presentationId: v.string(),
+    name: v.string(),
+    canvasEngine: v.union(v.literal("tldraw"), v.literal("excalidraw")),
+    folderId: v.optional(v.string()),
+    currentSlideIndex: v.number(),
+    version: v.number(),
+    ownerTokenHash: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_presentation_id", ["presentationId"]),
+
+  /**
+   * One row per slide. Canvas data (JSON-serialised snapshot/elements) is
+   * stored here with images stripped out (they live in `slideAssets`).
+   */
+  slides: defineTable({
+    presentationId: v.string(),
+    slideId: v.string(),
+    slideIndex: v.number(),
+    engine: v.union(v.literal("tldraw"), v.literal("excalidraw")),
+    sceneVersion: v.number(),
+    // tldraw: JSON.stringify(snapshot) with asset srcs replaced by convexUrl refs
+    snapshotJson: v.optional(v.string()),
+    // excalidraw: JSON.stringify(elements) with file dataURLs replaced by convexUrl refs
+    elementsJson: v.optional(v.string()),
+    // excalidraw: JSON.stringify(trimmed appState)
+    appStateJson: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_presentation", ["presentationId", "slideIndex"])
+    .index("by_slide_id", ["slideId"]),
+
+  /**
+   * One row per image/asset extracted from a slide.
+   * Maps (slideId, assetKey) → Convex File Storage ID.
+   * contentHash enables deduplication within a presentation.
+   */
+  slideAssets: defineTable({
+    presentationId: v.string(),
+    slideId: v.string(),
+    assetKey: v.string(),
+    storageId: v.id("_storage"),
+    mimeType: v.string(),
+    sizeBytes: v.number(),
+    contentHash: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_slide", ["slideId"])
+    .index("by_presentation", ["presentationId"])
+    .index("by_hash", ["presentationId", "contentHash"]),
+
+
   messages: defineTable({
     presentationId: v.string(),
     participantId: v.string(),
@@ -18,6 +83,7 @@ export default defineSchema({
     presentationId: v.string(),
     question: v.string(),
     options: v.array(v.string()),
+    pollType: v.optional(v.union(v.literal("multiple_choice"), v.literal("confidence"))),
     createdBy: v.string(),
     isActive: v.boolean(),
     resultsVisible: v.optional(v.boolean()),
@@ -51,4 +117,45 @@ export default defineSchema({
   })
     .index("by_poll", ["pollId"])
     .index("by_poll_participant", ["pollId", "participantId"]),
+
+  questions: defineTable({
+    presentationId: v.string(),
+    text: v.string(),
+    askedBy: v.string(),
+    upvotes: v.number(),
+    isAnswered: v.boolean(),
+    isHidden: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_presentation", ["presentationId", "createdAt"]),
+
+  questionVotes: defineTable({
+    questionId: v.id("questions"),
+    voterId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_question", ["questionId"])
+    .index("by_question_voter", ["questionId", "voterId"]),
+
+  hostSessions: defineTable({
+    presentationId: v.string(),
+    token: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_presentation", ["presentationId"])
+    .index("by_token", ["presentationId", "token"]),
+
+  /**
+   * One row per presentation — the currently-broadcasting live canvas state.
+   * Updated by the presenter on a ~2 s throttle; subscribed to by viewers
+   * via a reactive query. Shape graph only; binary assets are NOT included.
+   */
+  liveSlideState: defineTable({
+    presentationId: v.string(),
+    slideId: v.string(),
+    slideIndex: v.number(),
+    engine: v.union(v.literal("tldraw"), v.literal("excalidraw")),
+    snapshotJson: v.string(),
+    updatedAt: v.number(),
+  }).index("by_presentation_id", ["presentationId"]),
 });

@@ -22,11 +22,13 @@ export const list = query({
           .withIndex("by_poll", (q) => q.eq("pollId", poll._id))
           .collect();
 
-        const voteCounts: number[] = poll.options.map(() => 0);
+        const type = poll.pollType ?? "multiple_choice";
+        const slotCount = type === "confidence" ? 5 : poll.options.length;
+        const voteCounts: number[] = Array(slotCount).fill(0);
         let myVote = -1;
 
         for (const vote of votes) {
-          if (vote.optionIndex >= 0 && vote.optionIndex < poll.options.length) {
+          if (vote.optionIndex >= 0 && vote.optionIndex < slotCount) {
             voteCounts[vote.optionIndex]++;
           }
 
@@ -50,6 +52,7 @@ export const list = query({
 
         return {
           ...poll,
+          pollType: type,
           resultsVisible,
           voteCounts: resultsVisible ? voteCounts : null,
           totalVotes: votes.length,
@@ -92,12 +95,14 @@ export const create = mutation({
     presentationId: v.string(),
     question: v.string(),
     options: v.array(v.string()),
+    pollType: v.optional(v.union(v.literal("multiple_choice"), v.literal("confidence"))),
     createdBy: v.string(),
     clientRequestId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (!args.question.trim()) return null;
-    if (args.options.length < 2) return null;
+    const type = args.pollType ?? "multiple_choice";
+    if (type === "multiple_choice" && args.options.length < 2) return null;
 
     // Deduplicate: if clientRequestId provided, check for existing poll
     if (args.clientRequestId) {
@@ -119,6 +124,7 @@ export const create = mutation({
       presentationId: args.presentationId,
       question: args.question.trim(),
       options: args.options.map((o) => o.trim()).filter(Boolean),
+      pollType: type,
       createdBy: args.createdBy,
       isActive: true,
       resultsVisible: false,
@@ -217,8 +223,15 @@ export const vote = mutation({
   handler: async (ctx, args) => {
     const poll = await ctx.db.get(args.pollId);
     if (!poll || !poll.isActive) return null;
-    if (args.optionIndex < 0 || args.optionIndex >= poll.options.length) {
-      return null;
+
+    const type = poll.pollType ?? "multiple_choice";
+    if (type === "multiple_choice") {
+      if (args.optionIndex < 0 || args.optionIndex >= poll.options.length) {
+        return null;
+      }
+    } else {
+      // confidence: valid indices 0–4 (stars 1–5)
+      if (args.optionIndex < 0 || args.optionIndex > 4) return null;
     }
 
     const existingVote = await ctx.db

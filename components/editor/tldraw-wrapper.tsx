@@ -10,6 +10,12 @@ import { deleteSlidePreview, setSlidePreview } from "@/lib/slide-previews";
 export interface TldrawWrapperProps {
   slideId: string;
   snapshot?: StoreSnapshot<TLRecord> | null;
+  /**
+   * Live snapshot pushed from the presenter via Convex.
+   * When provided and `isReadonly` is true, the canvas applies this state
+   * using `mergeRemoteChanges` so it doesn't dirty the undo stack.
+   */
+  liveSnapshot?: StoreSnapshot<TLRecord> | null;
   onChange?: (snapshot: StoreSnapshot<TLRecord>) => void;
   onReady?: (editor: Editor) => void;
   isReadonly?: boolean;
@@ -46,6 +52,7 @@ async function loadTldrawLicenseKey(): Promise<string | null> {
 function TldrawWrapper({
   slideId,
   snapshot,
+  liveSnapshot,
   onChange,
   onReady,
   isReadonly = false,
@@ -209,6 +216,28 @@ function TldrawWrapper({
     if (!editor) return;
     syncEditorTheme(editor);
   }, [syncEditorTheme]);
+
+  // Apply live canvas state from the presenter (viewer-side, readonly only).
+  // Uses mergeRemoteChanges so the update doesn't dirty the local undo stack
+  // or re-trigger the store listener that feeds `onChange`.
+  useEffect(() => {
+    if (!isReadonly) return;
+    if (!liveSnapshot) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (!canLoadDocumentSnapshot(liveSnapshot)) return;
+
+    try {
+      isHydratingRef.current = true;
+      editor.store.mergeRemoteChanges(() => {
+        loadSnapshot(editor.store, { document: liveSnapshot });
+      });
+    } catch (err) {
+      console.error("[TldrawWrapper] Failed to apply liveSnapshot", err);
+    } finally {
+      isHydratingRef.current = false;
+    }
+  }, [liveSnapshot, isReadonly, canLoadDocumentSnapshot]);
 
   useEffect(() => {
     return () => {

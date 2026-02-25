@@ -1,18 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
-import { ParticipantChatPanel } from "@/components/chat/participant-chat-panel";
 import { PollPanel } from "@/components/polls/poll-panel";
+import { QuestionPanel } from "@/components/questions/question-panel";
 import { usePollNotifications } from "@/hooks/use-poll-notifications";
-import { useChatNotifications } from "@/hooks/use-chat-notifications";
-import { useAnonymousIdentity } from "@/hooks/use-anonymous-identity";
-import { X, ChevronLeft, ChevronRight, Expand, Shrink, MessageCircle, BarChart3, Bell, BellOff } from "lucide-react";
+import { useQuestionNotifications } from "@/hooks/use-question-notifications";
+import { useHostToken } from "@/hooks/use-host-token";
+import { useLiveSlideView } from "@/hooks/use-live-slide-view";
+import type { ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
+import { X, ChevronLeft, ChevronRight, Expand, Shrink, BarChart3, HelpCircle } from "lucide-react";
 
 const TldrawWrapper = dynamic(
   () => import("@/components/editor/tldraw-wrapper"),
@@ -47,22 +48,9 @@ export default function PresentationModePage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
-  type SidebarTab = "chat" | "polls" | null;
+  type SidebarTab = "polls" | "questions" | null;
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>(null);
   const sidebarOpen = sidebarTab !== null;
-
-  // Chat toast notifications (toggleable, persisted to localStorage)
-  const [showChatToasts, setShowChatToasts] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("slideboard-chat-toasts") !== "false";
-  });
-  const toggleChatToasts = useCallback(() => {
-    setShowChatToasts((prev) => {
-      const next = !prev;
-      localStorage.setItem("slideboard-chat-toasts", String(next));
-      return next;
-    });
-  }, []);
 
   const presentation = usePresentationStore((s) =>
     s.presentations.find((p) => p.id === presentationId)
@@ -70,6 +58,22 @@ export default function PresentationModePage() {
   const setCurrentSlide = usePresentationStore((s) => s.setCurrentSlide);
   const goToNextSlide = usePresentationStore((s) => s.goToNextSlide);
   const goToPreviousSlide = usePresentationStore((s) => s.goToPreviousSlide);
+
+  // Live canvas state from the presenter (pushed up from PresentModeConvexOverlay)
+  const [liveSnapshotJson, setLiveSnapshotJson] = useState<string | null>(null);
+  const [liveEngine, setLiveEngine] = useState<"tldraw" | "excalidraw" | null>(null);
+  const prevLiveSlideIndexRef = useRef<number | null>(null);
+  const handleLiveState = useCallback(
+    (slideIndex: number | null, engine: "tldraw" | "excalidraw" | null, snapshotJson: string | null) => {
+      setLiveSnapshotJson(snapshotJson);
+      setLiveEngine(engine);
+      if (slideIndex !== null && slideIndex !== prevLiveSlideIndexRef.current) {
+        prevLiveSlideIndexRef.current = slideIndex;
+        setCurrentSlide(presentationId, slideIndex);
+      }
+    },
+    [presentationId, setCurrentSlide],
+  );
 
   const currentSlide = presentation?.slides[presentation.currentSlideIndex];
   const currentIndex = presentation?.currentSlideIndex ?? 0;
@@ -131,18 +135,12 @@ export default function PresentationModePage() {
           e.preventDefault();
           toggleFullscreen();
           break;
-        case "c":
-        case "C":
-          if (!hasConvex) break;
-          e.preventDefault();
-          setSidebarTab((t) => (t === null ? "chat" : null));
-          break;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasConvex, presentation, presentationId, goToNextSlide, goToPreviousSlide, setCurrentSlide, handleExit, toggleFullscreen]);
+  }, [presentation, presentationId, goToNextSlide, goToPreviousSlide, setCurrentSlide, handleExit, toggleFullscreen]);
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -204,6 +202,17 @@ export default function PresentationModePage() {
             initialElements={currentSlide.engine === "excalidraw" ? currentSlide.elements : []}
             initialAppState={currentSlide.engine === "excalidraw" ? currentSlide.appState : {}}
             initialFiles={currentSlide.engine === "excalidraw" ? currentSlide.files : {}}
+            liveElements={
+              hasConvex && liveEngine === "excalidraw" && liveSnapshotJson
+                ? (() => {
+                    try {
+                      return JSON.parse(liveSnapshotJson) as readonly ExcalidrawElement[];
+                    } catch {
+                      return null;
+                    }
+                  })()
+                : null
+            }
             isReadonly={true}
           />
         ) : (
@@ -211,6 +220,17 @@ export default function PresentationModePage() {
             key={currentSlide.id}
             slideId={currentSlide.id}
             snapshot={currentSlide.engine === "tldraw" ? currentSlide.snapshot : null}
+            liveSnapshot={
+              hasConvex && liveEngine === "tldraw" && liveSnapshotJson
+                ? (() => {
+                    try {
+                      return JSON.parse(liveSnapshotJson) as StoreSnapshot<TLRecord>;
+                    } catch {
+                      return null;
+                    }
+                  })()
+                : null
+            }
             isReadonly={true}
           />
         )}
@@ -266,7 +286,6 @@ export default function PresentationModePage() {
           <div className="hidden items-center gap-4 text-sm text-white/72 md:flex">
             <span>← → Navigate</span>
             <span>F Fullscreen</span>
-            {hasConvex && <span>C Chat</span>}
             <span>Esc Exit</span>
           </div>
 
@@ -316,8 +335,7 @@ export default function PresentationModePage() {
           sidebarTab={sidebarTab}
           setSidebarTab={setSidebarTab}
           sidebarOpen={sidebarOpen}
-          showChatToasts={showChatToasts}
-          toggleChatToasts={toggleChatToasts}
+          onLiveState={handleLiveState}
         />
       )}
     </div>
@@ -335,66 +353,43 @@ function PresentModeConvexOverlay({
   sidebarTab,
   setSidebarTab,
   sidebarOpen,
-  showChatToasts,
-  toggleChatToasts,
+  onLiveState,
 }: {
   presentationId: string;
   showControls: boolean;
-  sidebarTab: "chat" | "polls" | null;
-  setSidebarTab: React.Dispatch<React.SetStateAction<"chat" | "polls" | null>>;
+  sidebarTab: "polls" | "questions" | null;
+  setSidebarTab: React.Dispatch<React.SetStateAction<"polls" | "questions" | null>>;
   sidebarOpen: boolean;
-  showChatToasts: boolean;
-  toggleChatToasts: () => void;
+  onLiveState: (
+    slideIndex: number | null,
+    engine: "tldraw" | "excalidraw" | null,
+    snapshotJson: string | null,
+  ) => void;
 }) {
-  const { participantId } = useAnonymousIdentity();
+  const hostToken = useHostToken(presentationId);
+
+  // Subscribe to live canvas state and surface it to the parent
+  const { liveSlideIndex, liveEngine, liveSnapshotJson } = useLiveSlideView(presentationId);
+  const onLiveStateRef = useRef(onLiveState);
+  useEffect(() => {
+    onLiveStateRef.current = onLiveState;
+  }, [onLiveState]);
+  useEffect(() => {
+    onLiveStateRef.current(liveSlideIndex, liveEngine, liveSnapshotJson);
+  }, [liveSlideIndex, liveEngine, liveSnapshotJson]);
 
   // Always subscribe to notifications, regardless of sidebar state
   usePollNotifications(presentationId);
-  useChatNotifications(presentationId, participantId, showChatToasts);
+  useQuestionNotifications(presentationId, hostToken);
 
   return (
     <>
-      {/* Chat/Polls/Notifications floating toggle */}
+      {/* Polls/Q&A floating toggles */}
       <div
         className={`absolute top-4 right-4 z-40 flex items-center gap-1 transition-opacity duration-300 ${
           showControls || sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-9 w-9 backdrop-blur-sm border ${
-                showChatToasts
-                  ? "bg-white/30 border-white/50 text-white"
-                  : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
-              }`}
-              onClick={toggleChatToasts}
-            >
-              {showChatToasts ? (
-                <Bell className="h-4 w-4" />
-              ) : (
-                <BellOff className="h-4 w-4" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p>{showChatToasts ? "Mute chat notifications" : "Enable chat notifications"}</p>
-          </TooltipContent>
-        </Tooltip>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`h-9 w-9 backdrop-blur-sm border ${
-            sidebarTab === "chat"
-              ? "bg-white/30 border-white/50 text-white"
-              : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
-          }`}
-          onClick={() => setSidebarTab((t) => (t === "chat" ? null : "chat"))}
-        >
-          <MessageCircle className="h-4 w-4" />
-        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -406,6 +401,18 @@ function PresentModeConvexOverlay({
           onClick={() => setSidebarTab((t) => (t === "polls" ? null : "polls"))}
         >
           <BarChart3 className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`h-9 w-9 backdrop-blur-sm border ${
+            sidebarTab === "questions"
+              ? "bg-white/30 border-white/50 text-white"
+              : "bg-black/40 border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
+          }`}
+          onClick={() => setSidebarTab((t) => (t === "questions" ? null : "questions"))}
+        >
+          <HelpCircle className="h-4 w-4" />
         </Button>
       </div>
 
@@ -419,15 +426,6 @@ function PresentModeConvexOverlay({
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <div className="flex items-center gap-1 rounded-lg border border-border bg-muted p-0.5">
               <Button
-                variant={sidebarTab === "chat" ? "default" : "ghost"}
-                size="sm"
-                className="h-6 gap-1 px-2.5 text-xs"
-                onClick={() => setSidebarTab("chat")}
-              >
-                <MessageCircle className="h-3 w-3" />
-                Chat
-              </Button>
-              <Button
                 variant={sidebarTab === "polls" ? "default" : "ghost"}
                 size="sm"
                 className="h-6 gap-1 px-2.5 text-xs"
@@ -435,6 +433,15 @@ function PresentModeConvexOverlay({
               >
                 <BarChart3 className="h-3 w-3" />
                 Polls
+              </Button>
+              <Button
+                variant={sidebarTab === "questions" ? "default" : "ghost"}
+                size="sm"
+                className="h-6 gap-1 px-2.5 text-xs"
+                onClick={() => setSidebarTab("questions")}
+              >
+                <HelpCircle className="h-3 w-3" />
+                Q&amp;A
               </Button>
             </div>
             <Button
@@ -448,16 +455,17 @@ function PresentModeConvexOverlay({
           </div>
 
           <div className="h-[calc(100%-44px)]">
-            {sidebarTab === "chat" && (
-              <ParticipantChatPanel
-                presentationId={presentationId}
-                className="h-full"
-              />
-            )}
             {sidebarTab === "polls" && (
               <PollPanel
                 presentationId={presentationId}
                 className="h-full"
+              />
+            )}
+            {sidebarTab === "questions" && (
+              <QuestionPanel
+                presentationId={presentationId}
+                className="h-full"
+                hostToken={hostToken}
               />
             )}
           </div>

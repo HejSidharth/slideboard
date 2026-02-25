@@ -29,6 +29,12 @@ interface ExcalidrawWrapperProps {
   initialElements?: readonly ExcalidrawElement[];
   initialAppState?: Partial<AppState>;
   initialFiles?: BinaryFiles;
+  /**
+   * Live elements pushed from the presenter via Convex.
+   * When provided and `isReadonly` is true, the canvas applies them via
+   * `updateScene` so the viewer sees the presenter's shapes in near-real-time.
+   */
+  liveElements?: readonly ExcalidrawElement[] | null;
   onChange?: (
     elements: readonly ExcalidrawElement[],
     appState: AppState,
@@ -39,7 +45,10 @@ interface ExcalidrawWrapperProps {
 }
 
 interface ExcalidrawApiLike {
-  updateScene?: (sceneData: { appState?: Partial<AppState> }) => void;
+  updateScene?: (sceneData: {
+    elements?: readonly ExcalidrawElement[];
+    appState?: Partial<AppState>;
+  }) => void;
 }
 
 function normalizeInitialAppState(appState: Partial<AppState>): Partial<AppState> {
@@ -56,6 +65,7 @@ export default function ExcalidrawWrapper({
   initialElements = [],
   initialAppState = {},
   initialFiles = {},
+  liveElements,
   onChange,
   onReady,
   isReadonly = false,
@@ -95,6 +105,16 @@ export default function ExcalidrawWrapper({
     const theme = resolvedTheme === "dark" ? "dark" : "light";
     api.updateScene({ appState: { theme } });
   }, [resolvedTheme]);
+
+  // Apply live elements from the presenter (viewer-side, readonly only).
+  // Called imperatively so we don't remount the Excalidraw instance.
+  useEffect(() => {
+    if (!isReadonly) return;
+    if (!liveElements) return;
+    const api = apiRef.current;
+    if (!api?.updateScene) return;
+    api.updateScene({ elements: liveElements });
+  }, [liveElements, isReadonly]);
 
   return (
     <div className="h-full w-full">

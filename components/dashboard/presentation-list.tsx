@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { PresentationCard } from "./presentation-card";
 import { CreatePresentationDialog } from "./create-dialog";
@@ -27,11 +28,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, FileText, Plus, Upload, FileUp } from "lucide-react";
+import { ChevronDown, FileText, Loader2, Plus, Upload, FileUp, Share2 } from "lucide-react";
 import { File, Folder, Tree } from "@/components/ui/file-tree";
 import { ImportDocumentDialog } from "@/components/editor/import-document-dialog";
 import type { Folder as FolderType } from "@/types";
 import type { ExtractedProblem } from "@/types";
+import type { SlideData } from "@/types";
 
 const ALL_SCOPE = "all";
 const UNFILED_SCOPE = "unfiled";
@@ -63,6 +65,7 @@ function collectDescendantIds(folders: FolderType[], folderId: string): Set<stri
 }
 
 export function PresentationList() {
+  const router = useRouter();
   const presentations = usePresentationStore((s) => s.presentations);
   const folders = usePresentationStore((s) => s.folders);
   const importPresentation = usePresentationStore((s) => s.importPresentation);
@@ -71,8 +74,11 @@ export function PresentationList() {
   const renameFolder = usePresentationStore((s) => s.renameFolder);
   const deleteFolder = usePresentationStore((s) => s.deleteFolder);
   const createPresentation = usePresentationStore((s) => s.createPresentation);
+  const hydrateSlides = usePresentationStore((s) => s.hydrateSlides);
   const addSlidesFromProblems = usePresentationStore((s) => s.addSlidesFromProblems);
   const deleteSlide = usePresentationStore((s) => s.deleteSlide);
+
+  const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
   const [scope, setScope] = useState<FolderScope>(ALL_SCOPE);
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,6 +92,12 @@ export function PresentationList() {
   const [createDeckFolderId, setCreateDeckFolderId] = useState<string | null>(null);
   const [importDocOpen, setImportDocOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // "Open by ID" dialog state
+  const [openByIdDialogOpen, setOpenByIdDialogOpen] = useState(false);
+  const [openByIdInput, setOpenByIdInput] = useState("");
+  const [openByIdLoading, setOpenByIdLoading] = useState(false);
+  const [openByIdError, setOpenByIdError] = useState<string | null>(null);
 
   const selectedFolder = useMemo(
     () => folders.find((folder) => folder.id === scope) ?? null,
@@ -223,6 +235,122 @@ export function PresentationList() {
     [createPresentation, addSlidesFromProblems, deleteSlide, currentFolderId],
   );
 
+  const handleOpenById = useCallback(async () => {
+    const presentationId = openByIdInput.trim();
+    if (!presentationId) return;
+
+    setOpenByIdLoading(true);
+    setOpenByIdError(null);
+
+    try {
+      // Dynamically import Convex client + sync functions to avoid loading
+      // them when Convex isn't configured.
+      const [{ ConvexReactClient }, { pullPresentation }] =
+        await Promise.all([
+          import("convex/react"),
+          import("@/lib/sync"),
+        ]);
+
+      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL!;
+      const client = new ConvexReactClient(convexUrl);
+
+      const slideIds = await pullPresentation(client, presentationId);
+      if (!slideIds) {
+        setOpenByIdError("Board not found. Check the ID and try again.");
+        return;
+      }
+
+      // Check if we already have this presentation in the store
+      const alreadyExists = usePresentationStore.getState().presentations.some(
+        (p) => p.id === presentationId,
+      );
+
+      if (!alreadyExists) {
+        // Import a lightweight shell — canvas data will hydrate from IDB
+        const meta = await client.query(
+          (await import("@/convex/_generated/api")).api.presentations.getPresentation,
+          { presentationId },
+        );
+        if (!meta) {
+          setOpenByIdError("Board not found. Check the ID and try again.");
+          return;
+        }
+
+        const { loadSlidesFromCache } = await import("@/lib/sync");
+        const entries = await loadSlidesFromCache(presentationId);
+
+        // Build slide stubs from IDB data
+        const slides: SlideData[] = entries.map((e) => e.slideData);
+
+        // Inject into store directly
+        const { setPresentationMeta } = await import("@/lib/slide-cache");
+        // The createPresentation mutation would create a new ID — we need to
+        // inject the remote presentation with its original ID. We do this
+        // by building the Presentation object and updating the Zustand state
+        // directly via the store's internal set.
+        const { CURRENT_SCHEMA_VERSION } = await import("@/types");
+        usePresentationStore.setState((state) => ({
+          presentations: [
+            ...state.presentations,
+            {
+              id: presentationId,
+              name: meta.name,
+              canvasEngine: meta.canvasEngine,
+              folderId: null,
+              slides: slides.length > 0 ? slides : [
+                {
+                  id: slideIds[0] ?? presentationId + "-slide0",
+                  engine: meta.canvasEngine,
+                  sceneVersion: 0,
+                  ...(meta.canvasEngine === "tldraw"
+                    ? { snapshot: null }
+                    : { elements: [], appState: {}, files: {} }),
+                  createdAt: meta.createdAt,
+                  updatedAt: meta.updatedAt,
+                } as SlideData,
+              ],
+              currentSlideIndex: meta.currentSlideIndex,
+              createdAt: meta.createdAt,
+              updatedAt: meta.updatedAt,
+              version: CURRENT_SCHEMA_VERSION,
+            },
+          ],
+        }));
+
+        // Store meta in IDB
+        await setPresentationMeta({
+          presentationId,
+          name: meta.name,
+          canvasEngine: meta.canvasEngine,
+          folderId: null,
+          currentSlideIndex: meta.currentSlideIndex,
+          slideIds,
+          version: CURRENT_SCHEMA_VERSION,
+          createdAt: meta.createdAt,
+          updatedAt: meta.updatedAt,
+          syncedAt: Date.now(),
+          cloudSynced: true,
+        });
+      } else {
+        // Already have it — refresh slides from IDB
+        const { loadSlidesFromCache } = await import("@/lib/sync");
+        const entries = await loadSlidesFromCache(presentationId);
+        if (entries.length > 0) {
+          hydrateSlides(presentationId, entries.map((e) => e.slideData));
+        }
+      }
+
+      setOpenByIdDialogOpen(false);
+      setOpenByIdInput("");
+      router.push(`/presentation/${presentationId}`);
+    } catch (err) {
+      console.error("[open-by-id]", err);
+      setOpenByIdError("Something went wrong. Please try again.");
+    } finally {
+      setOpenByIdLoading(false);
+    }
+  }, [openByIdInput, hydrateSlides, router]);
+
   const renderFolderNodes = (parentId: string | null): React.ReactNode => {
     const nodes = childrenMap.get(parentId) ?? [];
     return nodes.map((folder) => (
@@ -275,6 +403,12 @@ export function PresentationList() {
                 <FileUp className="mr-2 h-4 w-4" />
                 Import from Document
               </DropdownMenuItem>
+              {hasConvex && (
+                <DropdownMenuItem onSelect={() => openAfterContextMenu(() => setOpenByIdDialogOpen(true))}>
+                  <Share2 className="mr-2 h-4 w-4" />
+                  Open by ID
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -446,6 +580,65 @@ export function PresentationList() {
         onOpenChange={setImportDocOpen}
         onImportComplete={handleDocumentImportComplete}
       />
+
+      {hasConvex && (
+        <Dialog
+          open={openByIdDialogOpen}
+          onOpenChange={(open) => {
+            setOpenByIdDialogOpen(open);
+            if (!open) {
+              setOpenByIdInput("");
+              setOpenByIdError(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Open board by ID</DialogTitle>
+              <DialogDescription>
+                Enter a SlideBoard presentation ID shared with you to open it on this device.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-3 space-y-2">
+              <Input
+                value={openByIdInput}
+                onChange={(e) => {
+                  setOpenByIdInput(e.target.value);
+                  setOpenByIdError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleOpenById();
+                  }
+                }}
+                placeholder="Paste presentation ID..."
+                autoFocus
+                disabled={openByIdLoading}
+              />
+              {openByIdError && (
+                <p className="text-sm text-destructive">{openByIdError}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setOpenByIdDialogOpen(false)}
+                disabled={openByIdLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleOpenById}
+                disabled={!openByIdInput.trim() || openByIdLoading}
+              >
+                {openByIdLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Open
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

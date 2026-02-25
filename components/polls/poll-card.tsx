@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Check, Eye, EyeOff, Heart, Lock, Trash2, Unlock } from "lucide-react";
+import { Check, Eye, EyeOff, Heart, Lock, Star, Trash2, Unlock } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 
 export interface PollData {
@@ -14,6 +14,7 @@ export interface PollData {
   presentationId: string;
   question: string;
   options: string[];
+  pollType: "multiple_choice" | "confidence";
   createdBy: string;
   isActive: boolean;
   resultsVisible: boolean;
@@ -42,6 +43,7 @@ export function PollCard({ poll, participantId }: PollCardProps) {
 
   const isCreator = poll.createdBy === participantId;
   const showResults = poll.resultsVisible && Array.isArray(poll.voteCounts);
+  const isConfidence = poll.pollType === "confidence";
 
   const maxVotes = useMemo(
     () => Math.max(...(poll.voteCounts ?? []), 1),
@@ -159,57 +161,132 @@ export function PollCard({ poll, participantId }: PollCardProps) {
       </div>
 
       <div className="space-y-2">
-        {poll.options.map((option, index) => {
-          const count = showResults ? (poll.voteCounts?.[index] ?? 0) : 0;
-          const percentage =
-            showResults && poll.totalVotes > 0
-              ? Math.round((count / poll.totalVotes) * 100)
-              : 0;
-          const isMyVote = poll.myVote === index;
-          const barWidth = showResults && poll.totalVotes > 0
-            ? (count / maxVotes) * 100
-            : 0;
-
-          return (
-            <button
-              key={index}
-              className={cn(
-                "relative w-full overflow-hidden rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                poll.isActive ? "cursor-pointer hover:bg-accent" : "cursor-default",
-                isMyVote && "border-primary ring-1 ring-primary"
-              )}
-              onClick={() => {
-                if (poll.isActive) handleVote(index);
-              }}
-              disabled={!poll.isActive}
-            >
-              {showResults && (
-                <div
+        {isConfidence ? (
+          /* Confidence check — 5 star buttons */
+          <div className="flex items-center justify-center gap-2 py-2">
+            {[1, 2, 3, 4, 5].map((star) => {
+              const index = star - 1;
+              const isFilled = poll.myVote >= index && poll.myVote !== -1;
+              return (
+                <button
+                  key={star}
+                  type="button"
                   className={cn(
-                    "absolute inset-y-0 left-0 rounded-md transition-all duration-500",
-                    isMyVote ? "bg-primary/15" : "bg-muted-foreground/10"
+                    "rounded-md p-1 transition-all",
+                    poll.isActive
+                      ? "cursor-pointer hover:scale-110"
+                      : "cursor-default",
+                    isFilled
+                      ? "text-amber-400"
+                      : "text-muted-foreground/30 hover:text-amber-300"
                   )}
-                  style={{ width: `${barWidth}%` }}
-                />
-              )}
+                  onClick={() => {
+                    if (poll.isActive) handleVote(index);
+                  }}
+                  disabled={!poll.isActive}
+                  title={`${star} star${star !== 1 ? "s" : ""}`}
+                >
+                  <Star
+                    className={cn("h-7 w-7", isFilled && "fill-current")}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          /* Multiple choice options */
+          poll.options.map((option, index) => {
+            const count = showResults ? (poll.voteCounts?.[index] ?? 0) : 0;
+            const percentage =
+              showResults && poll.totalVotes > 0
+                ? Math.round((count / poll.totalVotes) * 100)
+                : 0;
+            const isMyVote = poll.myVote === index;
+            const barWidth = showResults && poll.totalVotes > 0
+              ? (count / maxVotes) * 100
+              : 0;
 
-              <div className="relative flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  {isMyVote && (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
-                  )}
-                  <span className="truncate">{option}</span>
-                </div>
-                {showResults && (
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {count} ({percentage}%)
-                  </span>
+            return (
+              <button
+                key={index}
+                className={cn(
+                  "relative w-full overflow-hidden rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                  poll.isActive ? "cursor-pointer hover:bg-accent" : "cursor-default",
+                  isMyVote && "border-primary ring-1 ring-primary"
                 )}
-              </div>
-            </button>
-          );
-        })}
+                onClick={() => {
+                  if (poll.isActive) handleVote(index);
+                }}
+                disabled={!poll.isActive}
+              >
+                {showResults && (
+                  <div
+                    className={cn(
+                      "absolute inset-y-0 left-0 rounded-md transition-all duration-500",
+                      isMyVote ? "bg-primary/15" : "bg-muted-foreground/10"
+                    )}
+                    style={{ width: `${barWidth}%` }}
+                  />
+                )}
+
+                <div className="relative flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {isMyVote && (
+                      <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    )}
+                    <span className="truncate">{option}</span>
+                  </div>
+      {showResults && !isConfidence && (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {count} ({percentage}%)
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })
+        )}
       </div>
+
+      {/* Confidence results */}
+      {isConfidence && showResults && poll.voteCounts && (
+        <div className="mt-3 rounded-md border border-border/70 bg-muted/30 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Results
+            </p>
+            <p className="text-sm font-semibold">
+              {poll.totalVotes > 0
+                ? (
+                    poll.voteCounts.reduce(
+                      (sum, count, i) => sum + count * (i + 1),
+                      0
+                    ) / poll.totalVotes
+                  ).toFixed(1)
+                : "—"}
+              <span className="text-xs font-normal text-muted-foreground"> / 5 avg</span>
+            </p>
+          </div>
+          <div className="flex items-end gap-1.5">
+            {poll.voteCounts.map((count, i) => {
+              const maxCount = Math.max(...poll.voteCounts!, 1);
+              const heightPercent = maxCount > 0 ? (count / maxCount) * 100 : 0;
+              return (
+                <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground">{count}</span>
+                  <div className="flex h-10 w-full items-end rounded-sm bg-muted">
+                    <div
+                      className="w-full rounded-sm bg-amber-400/70 transition-all duration-500"
+                      style={{ height: `${Math.max(heightPercent, count > 0 ? 10 : 0)}%` }}
+                    />
+                  </div>
+                  <Star className="h-3 w-3 fill-amber-400/60 text-amber-400/60" />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {showResults && (
         <div className="mt-3 rounded-md border border-border/70 bg-muted/30 p-2">
@@ -245,7 +322,9 @@ export function PollCard({ poll, participantId }: PollCardProps) {
 
       <div className="mt-2 flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
-          {poll.totalVotes} {poll.totalVotes === 1 ? "vote" : "votes"}
+          {isConfidence
+            ? `${poll.totalVotes} ${poll.totalVotes === 1 ? "response" : "responses"}`
+            : `${poll.totalVotes} ${poll.totalVotes === 1 ? "vote" : "votes"}`}
         </span>
         <div className="flex items-center gap-2">
           {/* Poll like button */}

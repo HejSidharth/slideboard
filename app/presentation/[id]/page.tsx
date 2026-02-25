@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import { useConvex } from "convex/react";
 import { usePresentationStore } from "@/store/use-presentation-store";
+import { loadSlidesFromCache, pushPresentation } from "@/lib/sync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,16 +21,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SlideSidebar } from "@/components/editor/slide-sidebar";
 import { SlideControls } from "@/components/editor/slide-controls";
 import { ChatPanel } from "@/components/chat/chat-panel";
-import { ParticipantChatPanel } from "@/components/chat/participant-chat-panel";
 import { PollPanel } from "@/components/polls/poll-panel";
+import { QuestionPanel } from "@/components/questions/question-panel";
 import { ShareDialog } from "@/components/editor/share-dialog";
 import { CalculatorPanel } from "@/components/editor/calculator-panel";
 import { CalculatorDockPanel } from "@/components/editor/calculator-panel";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
 import type { CalculatorMode } from "@/components/editor/calculator-panel";
 import { usePollNotifications } from "@/hooks/use-poll-notifications";
-import { useChatNotifications } from "@/hooks/use-chat-notifications";
-import { useAnonymousIdentity } from "@/hooks/use-anonymous-identity";
+import { useQuestionNotifications } from "@/hooks/use-question-notifications";
+import { useHostToken } from "@/hooks/use-host-token";
+import { useOwnerToken } from "@/hooks/use-owner-token";
+import { useLiveSlideSync } from "@/hooks/use-live-slide-sync";
 import {
   ArrowLeft,
   Play,
@@ -37,11 +41,9 @@ import {
   Pencil,
   Calculator,
   ImageDown,
-  MessageCircle,
   BarChart3,
   Share2,
-  Bell,
-  BellOff,
+  HelpCircle,
 } from "lucide-react";
 import type { AppState, BinaryFiles, Editor, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
 
@@ -90,12 +92,12 @@ export default function PresentationEditorPage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  type RightPanelTab = "assistant" | "chat" | "polls" | null;
+  type RightPanelTab = "assistant" | "polls" | "questions" | null;
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("slideboard-right-panel-tab");
     if (stored === "assistant") return stored;
-    if (hasConvex && (stored === "chat" || stored === "polls")) return stored;
+    if (hasConvex && (stored === "polls" || stored === "questions")) return stored;
     return null;
   });
   const [calculatorOpen, setCalculatorOpen] = useState<boolean>(() => {
@@ -107,17 +109,6 @@ export default function PresentationEditorPage() {
     const stored = localStorage.getItem("slideboard-calculator-mode");
     return stored === "sheet" ? "sheet" : "floating";
   });
-  const [showChatToasts, setShowChatToasts] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("slideboard-chat-toasts") !== "false";
-  });
-  const toggleChatToasts = useCallback(() => {
-    setShowChatToasts((prev) => {
-      const next = !prev;
-      localStorage.setItem("slideboard-chat-toasts", String(next));
-      return next;
-    });
-  }, []);
   const canvasRegionRef = useRef<HTMLDivElement | null>(null);
   const wheelDebugCountRef = useRef(0);
   const excalidrawSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,6 +125,27 @@ export default function PresentationEditorPage() {
   const renamePresentation = usePresentationStore((s) => s.renamePresentation);
   const addSlide = usePresentationStore((s) => s.addSlide);
   const exportPresentation = usePresentationStore((s) => s.exportPresentation);
+  const hydrateSlides = usePresentationStore((s) => s.hydrateSlides);
+
+  // Host token for Q&A moderation — only available on host surfaces
+  const hostToken = useHostToken(presentationId);
+  // Owner token for live canvas sync writes
+  const ownerToken = useOwnerToken(presentationId);
+
+  // ---------------------------------------------------------------------------
+  // On mount: hydrate canvas data from IndexedDB (Zustand only holds stubs)
+  // ---------------------------------------------------------------------------
+  const didHydrateRef = useRef(false);
+  useEffect(() => {
+    if (didHydrateRef.current) return;
+    didHydrateRef.current = true;
+
+    loadSlidesFromCache(presentationId).then((entries) => {
+      if (entries.length > 0) {
+        hydrateSlides(presentationId, entries.map((e) => e.slideData));
+      }
+    }).catch(console.error);
+  }, [presentationId, hydrateSlides]);
 
   const currentSlide = useMemo(() => {
     if (!presentation) return null;
@@ -581,25 +593,6 @@ export default function PresentationEditorPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant={rightPanelTab === "chat" ? "default" : "ghost"}
-                size="icon"
-                disabled={!hasConvex}
-                onClick={() =>
-                  hasConvex &&
-                  setRightPanelTab((tab) => (tab === "chat" ? null : "chat"))
-                }
-              >
-                <MessageCircle className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {hasConvex ? "Chat" : "Chat (set NEXT_PUBLIC_CONVEX_URL)"}
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
                 variant={rightPanelTab === "polls" ? "default" : "ghost"}
                 size="icon"
                 disabled={!hasConvex}
@@ -616,27 +609,24 @@ export default function PresentationEditorPage() {
             </TooltipContent>
           </Tooltip>
 
-          {hasConvex && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showChatToasts ? "ghost" : "ghost"}
-                  size="icon"
-                  onClick={toggleChatToasts}
-                  className={showChatToasts ? "" : "text-muted-foreground"}
-                >
-                  {showChatToasts ? (
-                    <Bell className="h-4 w-4" />
-                  ) : (
-                    <BellOff className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {showChatToasts ? "Mute notifications" : "Enable notifications"}
-              </TooltipContent>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={rightPanelTab === "questions" ? "default" : "ghost"}
+                size="icon"
+                disabled={!hasConvex}
+                onClick={() =>
+                  hasConvex &&
+                  setRightPanelTab((tab) => (tab === "questions" ? null : "questions"))
+                }
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {hasConvex ? "Q&A" : "Q&A (set NEXT_PUBLIC_CONVEX_URL)"}
+            </TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -729,17 +719,18 @@ export default function PresentationEditorPage() {
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <ChatPanel className="h-full" />
             </div>
-          ) : rightPanelTab === "chat" && hasConvex ? (
-            <div className="w-[360px] shrink-0 border-l border-border bg-background">
-              <ParticipantChatPanel
-                presentationId={presentationId}
-                className="h-full"
-              />
-            </div>
           ) : rightPanelTab === "polls" && hasConvex ? (
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <PollPanel
                 presentationId={presentationId}
+                className="h-full"
+              />
+            </div>
+          ) : rightPanelTab === "questions" && hasConvex ? (
+            <div className="w-[360px] shrink-0 border-l border-border bg-background">
+              <QuestionPanel
+                presentationId={presentationId}
+                hostToken={hostToken}
                 className="h-full"
               />
             </div>
@@ -789,7 +780,8 @@ export default function PresentationEditorPage() {
       {hasConvex && (
         <EditorConvexNotifications
           presentationId={presentationId}
-          showChatToasts={showChatToasts}
+          hostToken={hostToken}
+          ownerToken={ownerToken}
         />
       )}
     </div>
@@ -800,16 +792,37 @@ export default function PresentationEditorPage() {
  * Inner component mounted only when Convex is available.
  * Subscribes to poll/chat notifications at the editor page level
  * so toasts fire even when the Chat/Polls panels aren't open.
+ * Also pushes presentation changes to Convex in the background.
  */
 function EditorConvexNotifications({
   presentationId,
-  showChatToasts,
+  hostToken,
+  ownerToken,
 }: {
   presentationId: string;
-  showChatToasts: boolean;
+  hostToken: string;
+  ownerToken: string;
 }) {
-  const { participantId } = useAnonymousIdentity();
   usePollNotifications(presentationId);
-  useChatNotifications(presentationId, participantId, showChatToasts);
+  useQuestionNotifications(presentationId, hostToken);
+
+  // Background cloud sync — push on each updatedAt change, debounced 2 s
+  const convexClient = useConvex();
+  const presentation = usePresentationStore((s) =>
+    s.presentations.find((p) => p.id === presentationId),
+  );
+  const presentationUpdatedAt = presentation?.updatedAt;
+  useEffect(() => {
+    if (!presentation) return;
+    const timer = setTimeout(() => {
+      pushPresentation(convexClient, presentation).catch(console.error);
+    }, 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convexClient, presentationUpdatedAt]);
+
+  // Live canvas broadcast — throttled 2 s writes to Convex
+  useLiveSlideSync(presentationId, ownerToken);
+
   return null;
 }

@@ -109,6 +109,13 @@ export interface PresentationStore {
     presentationId: string,
     problems: ExtractedProblem[],
   ) => void;
+
+  /**
+   * Replace the canvas data of existing slides with full SlideData loaded
+   * from IndexedDB (or Convex). Matched by slide id; unmatched slides are
+   * left untouched.
+   */
+  hydrateSlides: (presentationId: string, slides: SlideData[]) => void;
 }
 
 export interface ProblemBoundingBox {
