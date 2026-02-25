@@ -9,9 +9,10 @@ interface ChatInputProps {
   onSend: (message: string) => void;
   isLoading: boolean;
   disabled?: boolean;
+  placeholder?: string;
 }
 
-export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, isLoading, disabled, placeholder }: ChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -44,7 +45,7 @@ export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask SlideBoard Assistant..."
+          placeholder={placeholder ?? "Ask SlideBoard Assistant..."}
           disabled={isLoading || disabled}
           className="min-h-[40px] max-h-[120px] resize-none"
           rows={1}

@@ -19,6 +19,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SlideSidebar } from "@/components/editor/slide-sidebar";
 import { SlideControls } from "@/components/editor/slide-controls";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { ParticipantChatPanel } from "@/components/chat/participant-chat-panel";
+import { PollPanel } from "@/components/polls/poll-panel";
+import { ShareDialog } from "@/components/editor/share-dialog";
 import { CalculatorPanel } from "@/components/editor/calculator-panel";
 import { CalculatorDockPanel } from "@/components/editor/calculator-panel";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
@@ -31,6 +34,9 @@ import {
   Pencil,
   Calculator,
   ImageDown,
+  MessageCircle,
+  BarChart3,
+  Share2,
 } from "lucide-react";
 import type { AppState, BinaryFiles, Editor, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
 
@@ -75,11 +81,15 @@ export default function PresentationEditorPage() {
   const router = useRouter();
   const presentationId = params.id as string;
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [assistantOpen, setAssistantOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem("slideboard-assistant-open") === "1";
+  type RightPanelTab = "assistant" | "chat" | "polls" | null;
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(() => {
+    if (typeof window === "undefined") return null;
+    const stored = localStorage.getItem("slideboard-right-panel-tab");
+    if (stored === "assistant" || stored === "chat" || stored === "polls") return stored;
+    return null;
   });
   const [calculatorOpen, setCalculatorOpen] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -97,6 +107,7 @@ export default function PresentationEditorPage() {
   const excalidrawApiRef = useRef<ExcalidrawApiLike | null>(null);
   const calculatorModeRef = useRef(calculatorMode);
   const calculatorOpenRef = useRef(calculatorOpen);
+  const rightPanelTabRef = useRef(rightPanelTab);
 
   const presentation = usePresentationStore((s) =>
     s.presentations.find((p) => p.id === presentationId)
@@ -305,12 +316,12 @@ export default function PresentationEditorPage() {
   }, [currentSlide, downloadBlob, presentation, roundedBlob]);
 
   const toggleAssistant = useCallback(() => {
-    setAssistantOpen((open) => {
-      const nextOpen = !open;
-      if (nextOpen && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
+    setRightPanelTab((tab) => {
+      const nextTab = tab === "assistant" ? null : "assistant";
+      if (nextTab && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
         setCalculatorOpen(false);
       }
-      return nextOpen;
+      return nextTab;
     });
   }, []);
 
@@ -318,7 +329,7 @@ export default function PresentationEditorPage() {
     setCalculatorOpen((open) => {
       const nextOpen = !open;
       if (nextOpen && calculatorModeRef.current === "sheet") {
-        setAssistantOpen(false);
+        setRightPanelTab(null);
       }
       return nextOpen;
     });
@@ -327,11 +338,16 @@ export default function PresentationEditorPage() {
   useEffect(() => {
     calculatorModeRef.current = calculatorMode;
     calculatorOpenRef.current = calculatorOpen;
-  }, [calculatorMode, calculatorOpen]);
+    rightPanelTabRef.current = rightPanelTab;
+  }, [calculatorMode, calculatorOpen, rightPanelTab]);
 
   useEffect(() => {
-    localStorage.setItem("slideboard-assistant-open", assistantOpen ? "1" : "0");
-  }, [assistantOpen]);
+    if (rightPanelTab) {
+      localStorage.setItem("slideboard-right-panel-tab", rightPanelTab);
+    } else {
+      localStorage.removeItem("slideboard-right-panel-tab");
+    }
+  }, [rightPanelTab]);
 
   useEffect(() => {
     localStorage.setItem(`slideboard-calculator-open:${presentationId}`, calculatorOpen ? "1" : "0");
@@ -359,12 +375,12 @@ export default function PresentationEditorPage() {
       event.preventDefault();
 
       if (event.shiftKey) {
-        setAssistantOpen((open) => {
-          const nextOpen = !open;
-          if (nextOpen && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
+        setRightPanelTab((tab) => {
+          const nextTab = tab === "assistant" ? null : "assistant";
+          if (nextTab && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
             setCalculatorOpen(false);
           }
-          return nextOpen;
+          return nextTab;
         });
         return;
       }
@@ -541,8 +557,51 @@ export default function PresentationEditorPage() {
             className="h-9 px-3 text-xs"
             onClick={toggleAssistant}
           >
-            {assistantOpen ? "Hide Assistant" : "Show Assistant"}
+            {rightPanelTab === "assistant" ? "Hide Assistant" : "Show Assistant"}
           </Button>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={rightPanelTab === "chat" ? "default" : "ghost"}
+                size="icon"
+                onClick={() =>
+                  setRightPanelTab((tab) => (tab === "chat" ? null : "chat"))
+                }
+              >
+                <MessageCircle className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Chat</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={rightPanelTab === "polls" ? "default" : "ghost"}
+                size="icon"
+                onClick={() =>
+                  setRightPanelTab((tab) => (tab === "polls" ? null : "polls"))
+                }
+              >
+                <BarChart3 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Polls</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShareDialogOpen(true)}
+              >
+                <Share2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Share</TooltipContent>
+          </Tooltip>
 
           <Button onClick={handlePresent} className="gap-2 px-5">
             <Play className="h-4 w-4" />
@@ -595,7 +654,7 @@ export default function PresentationEditorPage() {
                     onModeChange={(mode) => {
                       setCalculatorMode(mode);
                       if (mode === "sheet") {
-                        setAssistantOpen(false);
+                        setRightPanelTab(null);
                       }
                     }}
                     onClose={() => setCalculatorOpen(false)}
@@ -618,9 +677,23 @@ export default function PresentationEditorPage() {
                 onClose={() => setCalculatorOpen(false)}
               />
             </div>
-          ) : assistantOpen ? (
+          ) : rightPanelTab === "assistant" ? (
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <ChatPanel className="h-full" />
+            </div>
+          ) : rightPanelTab === "chat" ? (
+            <div className="w-[360px] shrink-0 border-l border-border bg-background">
+              <ParticipantChatPanel
+                presentationId={presentationId}
+                className="h-full"
+              />
+            </div>
+          ) : rightPanelTab === "polls" ? (
+            <div className="w-[360px] shrink-0 border-l border-border bg-background">
+              <PollPanel
+                presentationId={presentationId}
+                className="h-full"
+              />
             </div>
           ) : null}
         </div>
@@ -658,6 +731,12 @@ export default function PresentationEditorPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ShareDialog
+        presentationId={presentationId}
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+      />
     </div>
   );
 }
