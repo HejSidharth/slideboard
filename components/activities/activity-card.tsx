@@ -759,52 +759,59 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
             </div>
           )}
 
-          {/* Host view: bar chart */}
+          {/* Host view: results breakdown (only after reveal) */}
           {isHost && (
             <div className="space-y-1.5">
-              {options.map((opt, idx) => {
-                const count = distribution[idx] ?? 0;
-                const pct =
-                  answerCount > 0
-                    ? Math.round((count / answerCount) * 100)
-                    : 0;
-                const isCorrect = correctIndex === idx;
-                return (
-                  <div key={idx} className="space-y-0.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <span
-                          className={cn(
-                            "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold",
-                            isCorrect
-                              ? "bg-green-500 text-white"
-                              : "bg-muted text-muted-foreground",
-                          )}
-                        >
-                          {isCorrect ? (
-                            <CheckCircle2 className="h-3 w-3" />
-                          ) : (
-                            OPTION_LABELS[idx]
-                          )}
+              {activity.resultsVisible ? (
+                options.map((opt, idx) => {
+                  const count = distribution[idx] ?? 0;
+                  const pct =
+                    answerCount > 0
+                      ? Math.round((count / answerCount) * 100)
+                      : 0;
+                  const isCorrect = correctIndex === idx;
+                  return (
+                    <div key={idx} className="space-y-0.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <span
+                            className={cn(
+                              "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold",
+                              isCorrect
+                                ? "bg-green-500 text-white"
+                                : "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {isCorrect ? (
+                              <CheckCircle2 className="h-3 w-3" />
+                            ) : (
+                              OPTION_LABELS[idx]
+                            )}
+                          </span>
+                          {opt}
                         </span>
-                        {opt}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {count} ({pct}%)
-                      </span>
+                        <span className="text-muted-foreground">
+                          {count} ({pct}%)
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all duration-300",
+                            isCorrect ? "bg-green-500" : "bg-primary/60",
+                          )}
+                          style={{ width: `${(count / maxCount) * 100}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={cn(
-                          "h-full rounded-full transition-all duration-300",
-                          isCorrect ? "bg-green-500" : "bg-primary/60",
-                        )}
-                        style={{ width: `${(count / maxCount) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              ) : (
+                <div className="rounded-md border border-dashed border-border bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">
+                  Results are hidden until revealed.
+                </div>
+              )}
+
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Users className="h-3 w-3" />
                 {answerCount} response{answerCount !== 1 ? "s" : ""}

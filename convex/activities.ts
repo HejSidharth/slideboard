@@ -137,7 +137,7 @@ export const list = query({
         const correctIndex: number | null =
           isHost || hq.resultsVisible ? (hq.correctIndex ?? null) : null;
 
-        const answerList = isHost
+        const answerList = isHost && hq.resultsVisible === true
           ? answers.map((a: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
               participantId: a.participantId as string,
               mcqIndex: a.mcqIndex ?? null,
