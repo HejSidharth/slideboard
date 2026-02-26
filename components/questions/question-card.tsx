@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "@/lib/date-utils";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -51,10 +52,21 @@ export function QuestionCard({
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [createdAtLabel, setCreatedAtLabel] = useState(() =>
+    formatDistanceToNow(question.createdAt),
+  );
 
   const isOwnQuestion = question.askedBy === participantId;
   const canUpvote = !isOwnQuestion && !question.isAnswered;
   const showHostActions = Boolean(hostToken);
+
+  useEffect(() => {
+    setCreatedAtLabel(formatDistanceToNow(question.createdAt));
+    const id = setInterval(() => {
+      setCreatedAtLabel(formatDistanceToNow(question.createdAt));
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [question.createdAt]);
 
   const handleUpvote = useCallback(() => {
     if (!canUpvote) return;
@@ -164,6 +176,7 @@ export function QuestionCard({
             {isOwnQuestion && (
               <span className="text-[11px] text-muted-foreground">Your question</span>
             )}
+            <span className="text-[11px] text-muted-foreground">{createdAtLabel}</span>
           </div>
         </div>
 
@@ -244,7 +257,7 @@ export function QuestionCard({
             <AlertDialogAction
               onClick={handleConfirmRemove}
               disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {deleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

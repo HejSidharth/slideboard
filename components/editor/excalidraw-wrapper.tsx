@@ -6,6 +6,7 @@ import type { ComponentType } from "react";
 import { useTheme } from "next-themes";
 import "@excalidraw/excalidraw/index.css";
 import type { AppState, BinaryFiles, ExcalidrawElement } from "@/types";
+import { sanitizeExcalidrawElementIndices } from "@/lib/excalidraw-indices";
 
 const ExcalidrawComponent = dynamic(
   async () => {
@@ -82,11 +83,16 @@ export default function ExcalidrawWrapper({
   );
 
   const initialData = useMemo(
-    () => ({
-      elements: initialElements,
-      appState: normalizeInitialAppState(initialAppState),
-      files: initialFiles,
-    }),
+    () => {
+      const { elements: normalizedInitialElements } =
+        sanitizeExcalidrawElementIndices(initialElements);
+
+      return {
+        elements: normalizedInitialElements,
+        appState: normalizeInitialAppState(initialAppState),
+        files: initialFiles,
+      };
+    },
     [initialAppState, initialElements, initialFiles],
   );
 
@@ -113,7 +119,9 @@ export default function ExcalidrawWrapper({
     if (!liveElements) return;
     const api = apiRef.current;
     if (!api?.updateScene) return;
-    api.updateScene({ elements: liveElements });
+    const { elements: normalizedLiveElements } =
+      sanitizeExcalidrawElementIndices(liveElements);
+    api.updateScene({ elements: normalizedLiveElements });
   }, [liveElements, isReadonly]);
 
   return (

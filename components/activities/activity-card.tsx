@@ -159,9 +159,6 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
   const [freeText, setFreeText] = useState<string>(
     activity.source === "question" ? (activity.myAnswer?.freeText ?? "") : "",
   );
-  const [submitted, setSubmitted] = useState(
-    activity.source === "question" ? !!activity.myAnswer : false,
-  );
   const [questionDeleteDialogOpen, setQuestionDeleteDialogOpen] =
     useState(false);
   const [deletingQuestion, setDeletingQuestion] = useState(false);
@@ -185,6 +182,22 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
     !activity.isActive || (remaining !== null && remaining === 0);
   const isTimed = !!timeLimitMs;
   const isExpired = isTimed && remaining === 0;
+
+  const serverMcqIndex =
+    activity.source === "question" && activity.kind === "question_mcq"
+      ? (activity.myAnswer?.mcqIndex ?? null)
+      : null;
+  const hasMcqAnswer = serverMcqIndex !== null;
+  const isMcqDirty =
+    activity.kind === "question_mcq" && selectedMcqOption !== serverMcqIndex;
+
+  const serverFreeText =
+    activity.source === "question" && activity.kind === "question_frq"
+      ? (activity.myAnswer?.freeText ?? "")
+      : "";
+  const hasFrqAnswer = serverFreeText.trim().length > 0;
+  const isFrqDirty =
+    activity.kind === "question_frq" && freeText !== serverFreeText;
 
   // Auto-close question on timer expiry (best-effort)
   useEffect(() => {
@@ -310,6 +323,10 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
   const handleSubmitAnswer = useCallback(async () => {
     if (submitting || isClosed) return;
     if (activity.source !== "question") return;
+
+    if (activity.kind === "question_mcq" && selectedMcqOption === null) return;
+    if (activity.kind === "question_frq" && freeText.trim().length === 0) return;
+
     setSubmitting(true);
     try {
       await submitAnswer({
@@ -320,9 +337,8 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
             ? selectedMcqOption
             : undefined,
         freeText:
-          activity.kind === "question_frq" ? freeText : undefined,
+          activity.kind === "question_frq" ? freeText.trim() : undefined,
       });
-      setSubmitted(true);
     } finally {
       setSubmitting(false);
     }
@@ -462,7 +478,7 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
           <AlertDialogAction
             onClick={handleConfirmQuestionDelete}
             disabled={deletingQuestion}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            className="bg-destructive text-white hover:bg-destructive/90"
           >
             {deletingQuestion ? "Deleting..." : "Delete"}
           </AlertDialogAction>
@@ -839,9 +855,9 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
                   <button
                     key={idx}
                     type="button"
-                    disabled={isClosed || submitted}
+                    disabled={isClosed}
                     onClick={() =>
-                      !submitted && !isClosed && setSelectedMcqOption(idx)
+                      !isClosed && setSelectedMcqOption(idx)
                     }
                     className={cn(
                       "relative w-full rounded-md border px-3 py-2 text-left text-xs font-medium transition-colors overflow-hidden",
@@ -850,7 +866,7 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
                         : isSelected || isMyAnswer
                           ? "border-primary bg-primary/10"
                           : "border-border hover:bg-muted",
-                      (isClosed || submitted) && "cursor-default",
+                      isClosed && "cursor-default",
                     )}
                   >
                     {pct !== null && (
@@ -893,20 +909,30 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
           )}
 
           {/* Student submit button */}
-          {!isHost && !submitted && !isClosed && (
+          {!isHost && !isClosed && (
             <Button
               size="sm"
               className="w-full h-8 text-xs"
-              disabled={submitting || selectedMcqOption === null}
+              disabled={
+                submitting ||
+                selectedMcqOption === null ||
+                (hasMcqAnswer && !isMcqDirty)
+              }
               onClick={handleSubmitAnswer}
             >
-              {submitting ? "Submitting…" : "Submit"}
+              {submitting
+                ? "Saving..."
+                : !hasMcqAnswer
+                  ? "Submit"
+                  : isMcqDirty
+                    ? "Update answer"
+                    : "Saved"}
             </Button>
           )}
 
-          {!isHost && submitted && !isClosed && (
+          {!isHost && !isClosed && (
             <p className="text-center text-xs text-muted-foreground">
-              Answer submitted.
+              You can edit your response until this activity closes.
             </p>
           )}
         </div>
@@ -1008,34 +1034,42 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
               <Textarea
                 value={freeText}
                 onChange={(e) =>
-                  !submitted && !isClosed && setFreeText(e.target.value)
+                  !isClosed && setFreeText(e.target.value)
                 }
                 placeholder={
-                  submitted
-                    ? "Answer submitted."
-                    : isClosed
-                      ? "This question is closed."
-                      : "Type your answer…"
+                  isClosed
+                    ? "This question is closed."
+                    : "Type your answer..."
                 }
                 rows={3}
-                disabled={submitted || isClosed}
+                disabled={isClosed}
                 className="resize-none text-xs"
               />
 
-              {!submitted && !isClosed && (
+              {!isClosed && (
                 <Button
                   size="sm"
                   className="w-full h-8 text-xs"
-                  disabled={submitting || freeText.trim().length === 0}
+                  disabled={
+                    submitting ||
+                    freeText.trim().length === 0 ||
+                    (hasFrqAnswer && !isFrqDirty)
+                  }
                   onClick={handleSubmitAnswer}
                 >
-                  {submitting ? "Submitting…" : "Submit"}
+                  {submitting
+                    ? "Saving..."
+                    : !hasFrqAnswer
+                      ? "Submit"
+                      : isFrqDirty
+                        ? "Update answer"
+                        : "Saved"}
                 </Button>
               )}
 
-              {submitted && !isClosed && (
+              {!isClosed && (
                 <p className="text-center text-xs text-muted-foreground">
-                  Answer submitted.
+                  You can edit your response until this activity closes.
                 </p>
               )}
             </>

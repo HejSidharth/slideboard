@@ -4,8 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useConvex } from "convex/react";
+import { nanoid } from "nanoid";
+import { getSnapshot } from "tldraw";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { loadSlidesFromCache, pushPresentation } from "@/lib/sync";
+import {
+  getNextValidExcalidrawIndex,
+  sanitizeExcalidrawElementIndices,
+} from "@/lib/excalidraw-indices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -38,6 +44,7 @@ import {
   Play,
   Plus,
   Download,
+  FileDown,
   Pencil,
   Calculator,
   ImageDown,
@@ -45,12 +52,26 @@ import {
   Share2,
   HelpCircle,
 } from "lucide-react";
-import type { AppState, BinaryFiles, Editor, ExcalidrawElement, StoreSnapshot, TLRecord } from "@/types";
+import type {
+  AppState,
+  BinaryFiles,
+  CanvasEngine,
+  Editor,
+  ExcalidrawElement,
+  StoreSnapshot,
+  TLRecord,
+} from "@/types";
 
 interface ExcalidrawApiLike {
   getSceneElements: () => readonly ExcalidrawElement[];
   getAppState: () => AppState;
   getFiles: () => BinaryFiles;
+  addFiles?: (files: Array<{ id: string; dataURL: string; mimeType: string; created: number }>) => void;
+  updateScene?: (sceneData: {
+    elements?: readonly ExcalidrawElement[];
+    appState?: Partial<AppState>;
+    commitToHistory?: boolean;
+  }) => void;
 }
 
 const TldrawWrapper = dynamic(
@@ -83,6 +104,16 @@ const ExcalidrawWrapper = dynamic(
   },
 );
 
+interface AssistantInsertPayload {
+  dataUrl: string;
+  width: number;
+  height: number;
+  target: "current" | "new";
+  messageId: string;
+}
+
+type PdfExportFormat = "fit" | "a4";
+
 export default function PresentationEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -92,6 +123,13 @@ export default function PresentationEditorPage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfExportFormat, setPdfExportFormat] = useState<PdfExportFormat>(() => {
+    if (typeof window === "undefined") return "fit";
+    const stored = localStorage.getItem("slideboard-pdf-export-format");
+    return stored === "a4" ? "a4" : "fit";
+  });
+  const [isExportingDeckPdf, setIsExportingDeckPdf] = useState(false);
   type RightPanelTab = "assistant" | "activities" | "questions" | null;
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(() => {
     if (typeof window === "undefined") return null;
@@ -114,6 +152,13 @@ export default function PresentationEditorPage() {
   const excalidrawSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tldrawEditorRef = useRef<Editor | null>(null);
   const excalidrawApiRef = useRef<ExcalidrawApiLike | null>(null);
+  const tldrawReadySlideIdRef = useRef<string | null>(null);
+  const excalidrawReadySlideIdRef = useRef<string | null>(null);
+  const pdfTldrawEditorRef = useRef<Editor | null>(null);
+  const pdfExcalidrawApiRef = useRef<ExcalidrawApiLike | null>(null);
+  const pdfTldrawReadySlideIdRef = useRef<string | null>(null);
+  const pdfExcalidrawReadySlideIdRef = useRef<string | null>(null);
+  const [pdfRenderSlideIndex, setPdfRenderSlideIndex] = useState<number | null>(null);
   const calculatorModeRef = useRef(calculatorMode);
   const calculatorOpenRef = useRef(calculatorOpen);
   const rightPanelTabRef = useRef(rightPanelTab);
@@ -152,9 +197,28 @@ export default function PresentationEditorPage() {
     return presentation.slides[presentation.currentSlideIndex];
   }, [presentation]);
 
+  const pdfRenderSlide = useMemo(() => {
+    if (!presentation || pdfRenderSlideIndex === null) return null;
+    return presentation.slides[pdfRenderSlideIndex] ?? null;
+  }, [pdfRenderSlideIndex, presentation]);
+
   const currentSlideId = currentSlide?.id;
   const currentSlideEngine = currentSlide?.engine;
   const currentSlideSceneVersion = currentSlide?.sceneVersion;
+
+  useEffect(() => {
+    tldrawEditorRef.current = null;
+    excalidrawApiRef.current = null;
+    tldrawReadySlideIdRef.current = null;
+    excalidrawReadySlideIdRef.current = null;
+  }, [currentSlideId, currentSlideEngine]);
+
+  useEffect(() => {
+    pdfTldrawEditorRef.current = null;
+    pdfExcalidrawApiRef.current = null;
+    pdfTldrawReadySlideIdRef.current = null;
+    pdfExcalidrawReadySlideIdRef.current = null;
+  }, [pdfRenderSlideIndex]);
 
   const handleChange = useCallback(
     (snapshot: StoreSnapshot<TLRecord>) => {
@@ -174,11 +238,18 @@ export default function PresentationEditorPage() {
     ) => {
       if (!presentation || !currentSlide) return;
 
+      const { elements: normalizedElements } =
+        sanitizeExcalidrawElementIndices(elements);
+
       const nextAppState: Partial<AppState> = {
         scrollX: appState.scrollX,
         scrollY: appState.scrollY,
         zoom: appState.zoom,
         viewBackgroundColor: appState.viewBackgroundColor,
+        currentItemStrokeWidth:
+          typeof appState.currentItemStrokeWidth === "number"
+            ? appState.currentItemStrokeWidth
+            : 1,
       };
 
       if (excalidrawSaveTimeoutRef.current) {
@@ -187,7 +258,7 @@ export default function PresentationEditorPage() {
 
       excalidrawSaveTimeoutRef.current = setTimeout(() => {
         updateSlide(presentationId, presentation.currentSlideIndex, {
-          elements,
+          elements: normalizedElements,
           appState: nextAppState,
           files,
         });
@@ -212,6 +283,30 @@ export default function PresentationEditorPage() {
       excalidrawSaveTimeoutRef.current = null;
     }
   }, [currentSlideEngine, currentSlideId, currentSlideSceneVersion]);
+
+  useEffect(() => {
+    if (!presentation || !currentSlide || currentSlide.engine !== "excalidraw") {
+      return;
+    }
+
+    const { elements: normalizedElements, didRepair } =
+      sanitizeExcalidrawElementIndices(
+        Array.isArray(currentSlide.elements) ? currentSlide.elements : [],
+      );
+
+    if (!didRepair) return;
+
+    updateSlide(presentationId, presentation.currentSlideIndex, {
+      elements: normalizedElements,
+      appState: currentSlide.appState,
+      files: currentSlide.files,
+    });
+  }, [
+    currentSlide,
+    presentation,
+    presentationId,
+    updateSlide,
+  ]);
 
   const handleStartRename = () => {
     if (!presentation) return;
@@ -345,15 +440,466 @@ export default function PresentationEditorPage() {
     }
   }, [currentSlide, downloadBlob, presentation, roundedBlob]);
 
-  const toggleAssistant = useCallback(() => {
-    setRightPanelTab((tab) => {
-      const nextTab = tab === "assistant" ? null : "assistant";
-      if (nextTab && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
-        setCalculatorOpen(false);
-      }
-      return nextTab;
+  const createBlankPngBlob = useCallback(async (): Promise<Blob> => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1600;
+    canvas.height = 900;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return new Blob([], { type: "image/png" });
+    }
+
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob ?? new Blob([], { type: "image/png" })), "image/png", 1);
     });
   }, []);
+
+  const blobToDataUrl = useCallback((blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result !== "string") {
+          reject(new Error("Failed to read image data URL."));
+          return;
+        }
+        resolve(reader.result);
+      };
+      reader.onerror = () => reject(reader.error ?? new Error("Failed to read blob."));
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  const getBlobDimensions = useCallback(async (blob: Blob): Promise<{ width: number; height: number }> => {
+    const bitmap = await createImageBitmap(blob);
+    const dimensions = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return dimensions;
+  }, []);
+
+  const captureMountedSlidePng = useCallback(
+    async (engine: CanvasEngine, scope: "visible" | "pdf"): Promise<Blob> => {
+      if (engine === "tldraw") {
+        const editor = scope === "pdf" ? pdfTldrawEditorRef.current : tldrawEditorRef.current;
+        if (!editor) {
+          throw new Error("Tldraw editor is unavailable.");
+        }
+
+        const shapeIds = [...editor.getCurrentPageShapeIds()];
+        if (shapeIds.length === 0) {
+          return createBlankPngBlob();
+        }
+
+        const image = await editor.toImage(shapeIds, {
+          format: "png",
+          background: true,
+          padding: 48,
+          pixelRatio: 2,
+        });
+
+        return image.blob;
+      }
+
+      const api = scope === "pdf" ? pdfExcalidrawApiRef.current : excalidrawApiRef.current;
+      if (!api) {
+        throw new Error("Excalidraw API is unavailable.");
+      }
+
+      const elements = api.getSceneElements();
+      if (elements.length === 0) {
+        return createBlankPngBlob();
+      }
+
+      const appState = api.getAppState();
+      const { exportToBlob } = await import("@excalidraw/excalidraw");
+      return exportToBlob({
+        elements,
+        appState: {
+          ...appState,
+          exportBackground: true,
+          viewBackgroundColor: appState.viewBackgroundColor ?? "#ffffff",
+        },
+        files: api.getFiles(),
+        mimeType: "image/png",
+        exportPadding: 48,
+      });
+    },
+    [createBlankPngBlob],
+  );
+
+  const waitForPdfRenderCanvas = useCallback(
+    async (slideId: string, engine: CanvasEngine, timeoutMs = 6000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        if (
+          engine === "tldraw" &&
+          pdfTldrawEditorRef.current &&
+          pdfTldrawReadySlideIdRef.current === slideId
+        ) {
+          return;
+        }
+        if (
+          engine === "excalidraw" &&
+          pdfExcalidrawApiRef.current &&
+          pdfExcalidrawReadySlideIdRef.current === slideId
+        ) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error("Hidden renderer did not become ready in time.");
+    },
+    [],
+  );
+
+  const handleExportDeckPdf = useCallback(async () => {
+    if (!presentation || isExportingDeckPdf) return;
+
+    setIsExportingDeckPdf(true);
+    setPdfDialogOpen(false);
+
+    const engine = presentation.canvasEngine;
+
+    try {
+      const slideBlobs: Blob[] = [];
+
+      for (let i = 0; i < presentation.slides.length; i++) {
+        const targetSlide = presentation.slides[i];
+        if (!targetSlide) continue;
+
+        setPdfRenderSlideIndex(i);
+        await waitForPdfRenderCanvas(targetSlide.id, engine);
+        const blob = await captureMountedSlidePng(engine, "pdf");
+        slideBlobs.push(blob);
+      }
+
+      if (slideBlobs.length === 0) {
+        return;
+      }
+
+      const firstDimensions = await getBlobDimensions(slideBlobs[0]);
+      const firstRatio =
+        firstDimensions.height > 0
+          ? firstDimensions.width / firstDimensions.height
+          : 16 / 9;
+
+      const fitWidth = 1024;
+      const fitHeight = Math.max(576, Math.round(fitWidth / firstRatio));
+
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: pdfExportFormat === "a4" ? "a4" : [fitWidth, fitHeight],
+      });
+
+      for (let i = 0; i < slideBlobs.length; i++) {
+        if (i > 0) {
+          pdf.addPage(
+            pdfExportFormat === "a4" ? "a4" : [fitWidth, fitHeight],
+            "landscape",
+          );
+        }
+
+        const blob = slideBlobs[i];
+        const [dimensions, dataUrl] = await Promise.all([
+          getBlobDimensions(blob),
+          blobToDataUrl(blob),
+        ]);
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const scale = Math.min(pageWidth / dimensions.width, pageHeight / dimensions.height);
+        const renderWidth = dimensions.width * scale;
+        const renderHeight = dimensions.height * scale;
+        const x = (pageWidth - renderWidth) / 2;
+        const y = (pageHeight - renderHeight) / 2;
+
+        pdf.addImage(dataUrl, "PNG", x, y, renderWidth, renderHeight, undefined, "FAST");
+      }
+
+      const fileName = `${presentation.name.replace(/[^a-z0-9]/gi, "_")}.pdf`;
+      pdf.save(fileName);
+    } catch (error) {
+      console.error("Failed to export deck PDF", error);
+    } finally {
+      setPdfRenderSlideIndex(null);
+      setIsExportingDeckPdf(false);
+    }
+  }, [
+    blobToDataUrl,
+    captureMountedSlidePng,
+    getBlobDimensions,
+    isExportingDeckPdf,
+    pdfExportFormat,
+    presentation,
+    waitForPdfRenderCanvas,
+  ]);
+
+  const waitForCanvasReady = useCallback(
+    async (engine: "tldraw" | "excalidraw", timeoutMs = 2500) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        if (engine === "tldraw" && tldrawEditorRef.current) {
+          return;
+        }
+        if (engine === "excalidraw" && excalidrawApiRef.current) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error("Canvas is not ready yet.");
+    },
+    [],
+  );
+
+  const insertAssistantImage = useCallback(
+    async ({ dataUrl, width, height, target, messageId }: AssistantInsertPayload) => {
+      const snapshotBeforeInsert = usePresentationStore
+        .getState()
+        .presentations.find((p) => p.id === presentationId);
+
+      if (!snapshotBeforeInsert) {
+        throw new Error("Presentation not found.");
+      }
+
+      if (target === "new") {
+        tldrawEditorRef.current = null;
+        excalidrawApiRef.current = null;
+        addSlide(presentationId);
+      }
+
+      const livePresentation = usePresentationStore
+        .getState()
+        .presentations.find((p) => p.id === presentationId);
+
+      if (!livePresentation) {
+        throw new Error("Presentation not found.");
+      }
+
+      await waitForCanvasReady(livePresentation.canvasEngine);
+
+      if (livePresentation.canvasEngine === "tldraw") {
+        const editor = tldrawEditorRef.current;
+        if (!editor) {
+          throw new Error("Tldraw editor is unavailable.");
+        }
+
+        const viewport = editor.getViewportPageBounds();
+        const maxWidth = viewport.w * 0.72;
+        const maxHeight = viewport.h * 0.72;
+        const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+        const renderWidth = Math.max(1, Math.round(width * scale));
+        const renderHeight = Math.max(1, Math.round(height * scale));
+        const x = viewport.x + (viewport.w - renderWidth) / 2;
+        const y = viewport.y + (viewport.h - renderHeight) / 2;
+
+        const assetId = `asset:${nanoid()}`;
+        const shapeId = `shape:${nanoid()}`;
+
+        editor.createAssets([
+          {
+            id: assetId,
+            typeName: "asset",
+            type: "image",
+            props: {
+              name: `assistant-${messageId}.png`,
+              src: dataUrl,
+              w: width,
+              h: height,
+              mimeType: "image/png",
+              isAnimated: false,
+            },
+            meta: {},
+          } as never,
+        ]);
+
+        editor.createShapes([
+          {
+            id: shapeId,
+            type: "image",
+            parentId: editor.getCurrentPageId(),
+            x,
+            y,
+            props: {
+              w: renderWidth,
+              h: renderHeight,
+              assetId,
+              playing: true,
+              url: "",
+              crop: null,
+              flipX: false,
+              flipY: false,
+              altText: "Assistant response",
+            },
+          } as never,
+        ]);
+
+        const nextSnapshot = getSnapshot(editor.store);
+        const currentIndex = usePresentationStore
+          .getState()
+          .presentations.find((p) => p.id === presentationId)
+          ?.currentSlideIndex;
+
+        if (typeof currentIndex === "number") {
+          updateSlide(presentationId, currentIndex, {
+            snapshot: nextSnapshot.document,
+          });
+        }
+
+        return;
+      }
+
+      const api = excalidrawApiRef.current;
+      if (!api) {
+        throw new Error("Excalidraw API is unavailable.");
+      }
+
+      const currentAppState = api.getAppState();
+      const zoomValue =
+        typeof (currentAppState.zoom as { value?: number } | undefined)?.value ===
+          "number" &&
+        (currentAppState.zoom as { value: number }).value > 0
+          ? (currentAppState.zoom as { value: number }).value
+          : 1;
+      const viewportWidth =
+        typeof currentAppState.width === "number" ? currentAppState.width : 1280;
+      const viewportHeight =
+        typeof currentAppState.height === "number" ? currentAppState.height : 720;
+      const scrollX =
+        typeof currentAppState.scrollX === "number" ? currentAppState.scrollX : 0;
+      const scrollY =
+        typeof currentAppState.scrollY === "number" ? currentAppState.scrollY : 0;
+
+      const visibleWidth = viewportWidth / zoomValue;
+      const visibleHeight = viewportHeight / zoomValue;
+      const maxWidth = visibleWidth * 0.72;
+      const maxHeight = visibleHeight * 0.72;
+      const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+      const renderWidth = Math.max(1, Math.round(width * scale));
+      const renderHeight = Math.max(1, Math.round(height * scale));
+
+      const centerX = -scrollX + visibleWidth / 2;
+      const centerY = -scrollY + visibleHeight / 2;
+      const x = Math.round(centerX - renderWidth / 2);
+      const y = Math.round(centerY - renderHeight / 2);
+
+      const fileId = nanoid();
+      const now = Date.now();
+      const fileRecord = {
+        id: fileId,
+        dataURL: dataUrl,
+        mimeType: "image/png",
+        created: now,
+      };
+
+      const existingElements = api.getSceneElements();
+      const { elements: normalizedExistingElements } =
+        sanitizeExcalidrawElementIndices(existingElements);
+
+      const imageElement: ExcalidrawElement = {
+        type: "image",
+        version: 1,
+        versionNonce: Math.floor(Math.random() * 2147483647),
+        index: getNextValidExcalidrawIndex(normalizedExistingElements),
+        isDeleted: false,
+        id: nanoid(),
+        fillStyle: "solid",
+        strokeWidth: 1,
+        strokeStyle: "solid",
+        roughness: 0,
+        opacity: 100,
+        angle: 0,
+        x,
+        y,
+        strokeColor: "transparent",
+        backgroundColor: "transparent",
+        width: renderWidth,
+        height: renderHeight,
+        seed: Math.floor(Math.random() * 2147483647),
+        groupIds: [],
+        frameId: null,
+        boundElements: null,
+        updated: now,
+        link: null,
+        locked: false,
+        roundness: null,
+        fileId,
+        status: "saved",
+        scale: [1, 1],
+        crop: null,
+      };
+
+      const nextElements = [...normalizedExistingElements, imageElement];
+
+      api.addFiles?.([fileRecord]);
+      api.updateScene?.({
+        elements: nextElements,
+        commitToHistory: true,
+      });
+
+      const existingFiles = api.getFiles() as Record<string, unknown>;
+      const nextFiles = {
+        ...existingFiles,
+        [fileId]: fileRecord,
+      } as BinaryFiles;
+
+      const currentIndex = usePresentationStore
+        .getState()
+        .presentations.find((p) => p.id === presentationId)
+        ?.currentSlideIndex;
+
+      if (typeof currentIndex === "number") {
+        updateSlide(presentationId, currentIndex, {
+          elements: nextElements,
+          appState: {
+            scrollX:
+              typeof currentAppState.scrollX === "number"
+                ? currentAppState.scrollX
+                : 0,
+            scrollY:
+              typeof currentAppState.scrollY === "number"
+                ? currentAppState.scrollY
+                : 0,
+            zoom: currentAppState.zoom,
+            viewBackgroundColor:
+              typeof currentAppState.viewBackgroundColor === "string"
+                ? currentAppState.viewBackgroundColor
+                : "#ffffff",
+            currentItemStrokeWidth:
+              typeof currentAppState.currentItemStrokeWidth === "number"
+                ? currentAppState.currentItemStrokeWidth
+                : 1,
+          },
+          files: nextFiles,
+        });
+      }
+    },
+    [addSlide, presentationId, updateSlide, waitForCanvasReady],
+  );
+
+  const toggleRightPanelTab = useCallback(
+    (targetTab: Exclude<RightPanelTab, null>) => {
+      setRightPanelTab((tab) => {
+        const nextTab = tab === targetTab ? null : targetTab;
+        if (
+          nextTab &&
+          calculatorOpenRef.current &&
+          calculatorModeRef.current === "sheet"
+        ) {
+          setCalculatorOpen(false);
+        }
+        return nextTab;
+      });
+    },
+    [],
+  );
+
+  const toggleAssistant = useCallback(() => {
+    toggleRightPanelTab("assistant");
+  }, [toggleRightPanelTab]);
 
   const toggleCalculator = useCallback(() => {
     setCalculatorOpen((open) => {
@@ -388,6 +934,10 @@ export default function PresentationEditorPage() {
   }, [calculatorMode]);
 
   useEffect(() => {
+    localStorage.setItem("slideboard-pdf-export-format", pdfExportFormat);
+  }, [pdfExportFormat]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       const isTypingTarget =
@@ -405,13 +955,7 @@ export default function PresentationEditorPage() {
       event.preventDefault();
 
       if (event.shiftKey) {
-        setRightPanelTab((tab) => {
-          const nextTab = tab === "assistant" ? null : "assistant";
-          if (nextTab && calculatorOpenRef.current && calculatorModeRef.current === "sheet") {
-            setCalculatorOpen(false);
-          }
-          return nextTab;
-        });
+        toggleRightPanelTab("assistant");
         return;
       }
 
@@ -421,7 +965,7 @@ export default function PresentationEditorPage() {
 
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [addSlide, presentationId]);
+  }, [addSlide, presentationId, toggleRightPanelTab]);
 
   useEffect(() => {
     const canvasRegion = canvasRegionRef.current;
@@ -578,6 +1122,22 @@ export default function PresentationEditorPage() {
             <TooltipContent>Download slide image</TooltipContent>
           </Tooltip>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setPdfDialogOpen(true)}
+                disabled={isExportingDeckPdf}
+              >
+                <FileDown className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isExportingDeckPdf ? "Exporting PDF..." : "Export deck as PDF"}
+            </TooltipContent>
+          </Tooltip>
+
           <PresentationTimer presentationId={presentationId} />
 
           <Separator orientation="vertical" className="h-6" />
@@ -597,8 +1157,7 @@ export default function PresentationEditorPage() {
                 size="icon"
                 disabled={!hasConvex}
                 onClick={() =>
-                  hasConvex &&
-                  setRightPanelTab((tab) => (tab === "activities" ? null : "activities"))
+                  hasConvex && toggleRightPanelTab("activities")
                 }
               >
                 <LayoutList className="h-4 w-4" />
@@ -616,8 +1175,7 @@ export default function PresentationEditorPage() {
                 size="icon"
                 disabled={!hasConvex}
                 onClick={() =>
-                  hasConvex &&
-                  setRightPanelTab((tab) => (tab === "questions" ? null : "questions"))
+                  hasConvex && toggleRightPanelTab("questions")
                 }
               >
                 <HelpCircle className="h-4 w-4" />
@@ -669,6 +1227,7 @@ export default function PresentationEditorPage() {
                     onChange={handleExcalidrawChange}
                     onReady={(api) => {
                       excalidrawApiRef.current = api as ExcalidrawApiLike;
+                      excalidrawReadySlideIdRef.current = currentSlide.id;
                     }}
                   />
                 ) : (
@@ -679,6 +1238,7 @@ export default function PresentationEditorPage() {
                     onChange={handleChange}
                     onReady={(editor) => {
                       tldrawEditorRef.current = editor;
+                      tldrawReadySlideIdRef.current = currentSlide.id;
                     }}
                   />
                 )
@@ -717,7 +1277,10 @@ export default function PresentationEditorPage() {
             </div>
           ) : rightPanelTab === "assistant" ? (
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
-              <ChatPanel className="h-full" />
+              <ChatPanel
+                className="h-full"
+                onInsertAsImage={insertAssistantImage}
+              />
             </div>
           ) : rightPanelTab === "activities" && hasConvex ? (
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
@@ -739,6 +1302,89 @@ export default function PresentationEditorPage() {
           ) : null}
         </div>
       </div>
+
+      {pdfRenderSlide && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed -left-[20000px] top-0 h-[1080px] w-[1920px] overflow-hidden opacity-0"
+        >
+          {presentation.canvasEngine === "excalidraw" ? (
+            <ExcalidrawWrapper
+              key={`pdf:${pdfRenderSlide.id}:${pdfRenderSlide.sceneVersion}`}
+              initialElements={pdfRenderSlide.engine === "excalidraw" ? pdfRenderSlide.elements : []}
+              initialAppState={pdfRenderSlide.engine === "excalidraw" ? pdfRenderSlide.appState : {}}
+              initialFiles={pdfRenderSlide.engine === "excalidraw" ? pdfRenderSlide.files : {}}
+              isReadonly={true}
+              onReady={(api) => {
+                pdfExcalidrawApiRef.current = api as ExcalidrawApiLike;
+                pdfExcalidrawReadySlideIdRef.current = pdfRenderSlide.id;
+              }}
+            />
+          ) : (
+            <TldrawWrapper
+              key={`pdf:${pdfRenderSlide.id}:${pdfRenderSlide.sceneVersion}`}
+              slideId={pdfRenderSlide.id}
+              snapshot={pdfRenderSlide.engine === "tldraw" ? pdfRenderSlide.snapshot : null}
+              isReadonly={true}
+              onReady={(editor) => {
+                pdfTldrawEditorRef.current = editor;
+                pdfTldrawReadySlideIdRef.current = pdfRenderSlide.id;
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      <Dialog
+        open={pdfDialogOpen}
+        onOpenChange={(open) => {
+          if (isExportingDeckPdf) return;
+          setPdfDialogOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export deck as PDF</DialogTitle>
+            <DialogDescription>
+              Choose a page format for the exported PDF.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant={pdfExportFormat === "fit" ? "default" : "outline"}
+              className="w-full justify-start"
+              onClick={() => setPdfExportFormat("fit")}
+              disabled={isExportingDeckPdf}
+            >
+              Fit to slide ratio
+            </Button>
+            <Button
+              type="button"
+              variant={pdfExportFormat === "a4" ? "default" : "outline"}
+              className="w-full justify-start"
+              onClick={() => setPdfExportFormat("a4")}
+              disabled={isExportingDeckPdf}
+            >
+              A4 landscape
+            </Button>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPdfDialogOpen(false)}
+              disabled={isExportingDeckPdf}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleExportDeckPdf} disabled={isExportingDeckPdf}>
+              {isExportingDeckPdf ? "Exporting..." : "Export PDF"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={renameDialogOpen} onOpenChange={handleRenameDialogOpenChange}>
         <DialogContent className="sm:max-w-md">

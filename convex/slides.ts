@@ -89,6 +89,22 @@ export const getSlideAssets = query({
   },
 });
 
+/**
+ * Create a short-lived Convex upload URL for File Storage.
+ * Requires owner auth for the presentation to prevent arbitrary uploads.
+ */
+export const generateUploadUrl = mutation({
+  args: {
+    presentationId: v.string(),
+    ownerToken: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const isOwner = await assertOwner(ctx, args.presentationId, args.ownerToken);
+    if (!isOwner) return null;
+    return ctx.storage.generateUploadUrl();
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------

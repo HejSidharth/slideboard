@@ -1,18 +1,27 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useChat } from "@/hooks/use-chat";
+import { captureElementAsPng } from "@/lib/capture-element-png";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 
 interface ChatPanelProps {
   className?: string;
+  onInsertAsImage?: (params: {
+    dataUrl: string;
+    width: number;
+    height: number;
+    target: "current" | "new";
+    messageId: string;
+  }) => Promise<void>;
 }
 
-export function ChatPanel({ className }: ChatPanelProps) {
+export function ChatPanel({ className, onInsertAsImage }: ChatPanelProps) {
   const {
     messages,
     isLoading,
@@ -20,14 +29,43 @@ export function ChatPanel({ className }: ChatPanelProps) {
     sendMessage,
     clearChat,
   } = useChat();
+  const [insertingMessageId, setInsertingMessageId] = useState<string | null>(null);
 
-  const quickPrompts = useMemo(
-    () => [
-      "Summarize this slide",
-      "Generate a 3-question quiz",
-      "Write speaker notes",
-    ],
-    [],
+  const handleInsertAsImage = useCallback(
+    async (
+      message: { id: string; content: string },
+      target: "current" | "new",
+      sourceElement: HTMLElement | null,
+    ) => {
+      if (!onInsertAsImage) return;
+      if (!sourceElement) {
+        toast.error("Unable to capture that message right now.");
+        return;
+      }
+
+      setInsertingMessageId(message.id);
+      try {
+        const capture = await captureElementAsPng(sourceElement);
+        await onInsertAsImage({
+          dataUrl: capture.dataUrl,
+          width: capture.width,
+          height: capture.height,
+          target,
+          messageId: message.id,
+        });
+        toast.success(
+          target === "new"
+            ? "Inserted assistant response on a new slide."
+            : "Inserted assistant response on the current slide.",
+        );
+      } catch (error) {
+        console.error("Failed to insert assistant image", error);
+        toast.error("Could not insert this response into the slide.");
+      } finally {
+        setInsertingMessageId(null);
+      }
+    },
+    [onInsertAsImage],
   );
 
   return (
@@ -56,23 +94,8 @@ export function ChatPanel({ className }: ChatPanelProps) {
           </div>
 
           <p className="mt-2 text-xs text-muted-foreground">
-            Ask for outlines, explanations, and speaker notes.
+            Ask for explanations, examples, and classroom-ready notes.
           </p>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {quickPrompts.map((prompt) => (
-              <Button
-                key={prompt}
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-[11px]"
-                disabled={isLoading}
-                onClick={() => sendMessage(prompt)}
-              >
-                {prompt}
-              </Button>
-            ))}
-          </div>
         </div>
 
         {error && (
@@ -81,7 +104,12 @@ export function ChatPanel({ className }: ChatPanelProps) {
           </div>
         )}
 
-        <ChatMessages messages={messages} isLoading={isLoading} />
+        <ChatMessages
+          messages={messages}
+          isLoading={isLoading}
+          insertingMessageId={insertingMessageId}
+          onInsertAsImage={onInsertAsImage ? handleInsertAsImage : undefined}
+        />
 
         <ChatInput onSend={sendMessage} isLoading={isLoading} />
       </div>

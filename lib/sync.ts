@@ -32,6 +32,7 @@ import {
   rehydrateExcalidrawFiles,
   rehydrateTldrawStore,
 } from "@/lib/asset-extractor";
+import { sanitizeExcalidrawElementIndices } from "@/lib/excalidraw-indices";
 import { getOrCreateOwnerToken } from "@/hooks/use-owner-token";
 import type { Presentation, SlideData, ExcalidrawSlideData, TldrawSlideData } from "@/types";
 
@@ -48,21 +49,60 @@ function getConvexUrl(): string {
  * Returns the storageId.
  */
 async function uploadBlobToConvex(
+  convex: ConvexReactClient,
   blob: Blob,
   mimeType: string,
+  presentationId: string,
+  ownerToken: string,
 ): Promise<string> {
-  const convexUrl = getConvexUrl();
-  if (!convexUrl) throw new Error("NEXT_PUBLIC_CONVEX_URL not set");
+  const uploadUrl = await convex.mutation(api.slides.generateUploadUrl, {
+    presentationId,
+    ownerToken,
+  });
 
-  const uploadUrl = `${convexUrl.replace(/\/$/, "")}/upload-asset`;
-  const res = await fetch(uploadUrl, {
+  if (!uploadUrl) {
+    throw new Error("Unauthorized upload URL request.");
+  }
+
+  const uploadRes = await fetch(uploadUrl, {
     method: "POST",
     headers: { "content-type": mimeType },
     body: blob,
   });
-  if (!res.ok) throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
-  const json = await res.json() as { storageId: string };
-  return json.storageId;
+
+  if (uploadRes.ok) {
+    const json = await uploadRes.json() as { storageId: string };
+    if (!json.storageId) {
+      throw new Error("Upload succeeded but storageId was missing.");
+    }
+    return json.storageId;
+  }
+
+  // Fallback for deployments still using HTTP actions only.
+  const convexUrl = getConvexUrl();
+  if (!convexUrl) {
+    throw new Error(`Upload failed: ${uploadRes.status} ${uploadRes.statusText}`);
+  }
+
+  const fallbackUrls = [
+    `${convexUrl.replace(/\/$/, "")}/upload-asset`,
+    `${convexUrl.replace(/\/$/, "")}/api/upload-asset`,
+  ];
+
+  for (const fallbackUrl of fallbackUrls) {
+    const fallbackRes = await fetch(fallbackUrl, {
+      method: "POST",
+      headers: { "content-type": mimeType },
+      body: blob,
+    });
+    if (!fallbackRes.ok) continue;
+    const json = await fallbackRes.json() as { storageId: string };
+    if (json.storageId) {
+      return json.storageId;
+    }
+  }
+
+  throw new Error(`Upload failed: ${uploadRes.status} ${uploadRes.statusText}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +130,13 @@ async function syncSlideToConvex(
       files,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       async (blob, mimeType, _hash) => {
-        return uploadBlobToConvex(blob, mimeType);
+        return uploadBlobToConvex(
+          convex,
+          blob,
+          mimeType,
+          presentationId,
+          ownerToken,
+        );
       },
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       async (_contentHash) => null,
@@ -146,7 +192,13 @@ async function syncSlideToConvex(
       store,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       async (blob, mimeType, _hash) => {
-        return uploadBlobToConvex(blob, mimeType);
+        return uploadBlobToConvex(
+          convex,
+          blob,
+          mimeType,
+          presentationId,
+          ownerToken,
+        );
       },
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       async (_contentHash) => null,
@@ -388,10 +440,13 @@ export function snapshotToSlideData(snapshot: StoredSlideSnapshot): SlideData {
   };
 
   if (snapshot.engine === "excalidraw") {
+    const parsedElements = snapshot.elementsJson ? JSON.parse(snapshot.elementsJson) : [];
+    const { elements: normalizedElements } = sanitizeExcalidrawElementIndices(parsedElements);
+
     const slide: ExcalidrawSlideData = {
       ...base,
       engine: "excalidraw",
-      elements: snapshot.elementsJson ? JSON.parse(snapshot.elementsJson) : [],
+      elements: normalizedElements,
       appState: snapshot.appStateJson ? JSON.parse(snapshot.appStateJson) : {},
       files: snapshot.filesJson ? JSON.parse(snapshot.filesJson) : {},
     };

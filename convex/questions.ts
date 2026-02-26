@@ -121,10 +121,12 @@ export const list = query({
         })
     );
 
-    // Sort: unanswered first by upvotes desc, then answered by upvotes desc
+    // Sort: unanswered first; within each group sort by upvotes desc,
+    // then by createdAt desc (newest first for equal upvotes).
     enriched.sort((a: any, b: any) => {
       if (a.isAnswered !== b.isAnswered) return a.isAnswered ? 1 : -1;
-      return b.upvotes - a.upvotes;
+      if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes;
+      return b.createdAt - a.createdAt;
     });
 
     return enriched;

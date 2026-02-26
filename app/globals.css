@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "katex/dist/katex.min.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -132,6 +133,36 @@
   .text-balance {
     text-wrap: balance;
   }
+}
+
+.chat-markdown p,
+.chat-markdown li {
+  overflow-wrap: anywhere;
+}
+
+.chat-markdown {
+  max-width: 100%;
+}
+
+.chat-markdown .katex-display,
+.chat-markdown pre,
+.chat-markdown table {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.chat-markdown .katex-display {
+  padding-bottom: 0.125rem;
+  width: 100%;
+}
+
+.chat-markdown .katex-display > .katex {
+  min-width: max-content;
+}
+
+.chat-markdown .katex {
+  max-width: 100%;
 }
 
 html.editor-gesture-lock,

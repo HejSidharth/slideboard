@@ -26,6 +26,7 @@ import {
   deletePresentationMeta,
   type StoredSlideSnapshot,
 } from "@/lib/slide-cache";
+import { sanitizeExcalidrawElementIndices } from "@/lib/excalidraw-indices";
 
 const PERSIST_VERSION = 8;
 
@@ -35,8 +36,8 @@ const EXCALIDRAW_DEFAULT_APP_STATE: Partial<AppState> = {
 
 function createExcalidrawDefaultAppState(overrides: Partial<AppState> = {}): Partial<AppState> {
   return {
-    ...EXCALIDRAW_DEFAULT_APP_STATE,
     ...overrides,
+    ...EXCALIDRAW_DEFAULT_APP_STATE,
   };
 }
 
@@ -162,7 +163,7 @@ function createExcalidrawSlideFromProblem(problem: ExtractedProblem): Excalidraw
     isDeleted: false,
     id: elementId,
     fillStyle: "solid",
-    strokeWidth: 2,
+    strokeWidth: 1,
     strokeStyle: "solid",
     roughness: 0,
     opacity: 100,
@@ -305,6 +306,11 @@ function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): Sl
   const engine: CanvasEngine = hasExcalidrawData ? "excalidraw" : fallbackEngine;
 
   if (engine === "excalidraw") {
+    const parsedElements = isExcalidrawElements((slide as { elements?: unknown })?.elements)
+      ? ((slide as { elements: readonly ExcalidrawElement[] }).elements)
+      : [];
+    const { elements: normalizedElements } = sanitizeExcalidrawElementIndices(parsedElements);
+
     return {
       id: nanoid(),
       engine,
@@ -312,9 +318,7 @@ function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): Sl
         typeof (slide as { sceneVersion?: unknown })?.sceneVersion === "number"
           ? ((slide as { sceneVersion: number }).sceneVersion)
           : 0,
-      elements: isExcalidrawElements((slide as { elements?: unknown })?.elements)
-        ? ((slide as { elements: readonly ExcalidrawElement[] }).elements)
-        : [],
+      elements: normalizedElements,
       appState:
         slide && typeof (slide as { appState?: unknown }).appState === "object" && (slide as { appState?: unknown }).appState
           ? createExcalidrawDefaultAppState((slide as { appState: Partial<AppState> }).appState)

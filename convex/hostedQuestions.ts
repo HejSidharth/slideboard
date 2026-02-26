@@ -322,6 +322,22 @@ export const submitAnswer = mutation({
       if (Date.now() > deadline) return null;
     }
 
+    const isMcq = hq.questionType === "mcq";
+    const isFrq = hq.questionType === "free_response";
+
+    if (isMcq) {
+      if (typeof args.mcqIndex !== "number") return null;
+      const optionCount = (hq.options ?? []).length;
+      if (args.mcqIndex < 0 || args.mcqIndex >= optionCount) return null;
+    }
+
+    let trimmedFreeText: string | null = null;
+    if (isFrq) {
+      if (typeof args.freeText !== "string") return null;
+      trimmedFreeText = args.freeText.trim();
+      if (!trimmedFreeText) return null;
+    }
+
     // Upsert: one answer per participant per question
     const existing = await ctx.db
       .query("hostedAnswers")
@@ -333,19 +349,23 @@ export const submitAnswer = mutation({
       .first();
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        mcqIndex: args.mcqIndex ?? undefined,
-        freeText: args.freeText ?? undefined,
-        submittedAt: Date.now(),
-      });
+      await ctx.db.patch(existing._id, isMcq
+        ? {
+            mcqIndex: args.mcqIndex,
+            submittedAt: Date.now(),
+          }
+        : {
+            freeText: trimmedFreeText ?? undefined,
+            submittedAt: Date.now(),
+          });
       return existing._id;
     }
 
     const id = await ctx.db.insert("hostedAnswers", {
       questionId: args.questionId,
       participantId: args.participantId,
-      mcqIndex: args.mcqIndex ?? undefined,
-      freeText: args.freeText ?? undefined,
+      mcqIndex: isMcq ? args.mcqIndex : undefined,
+      freeText: isFrq ? (trimmedFreeText ?? undefined) : undefined,
       submittedAt: Date.now(),
     });
     return id;
