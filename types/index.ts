@@ -136,3 +136,108 @@ export interface ExtractedProblem {
 }
 
 export const CURRENT_SCHEMA_VERSION = 6;
+
+// ---------------------------------------------------------------------------
+// Hosted questions (host-authored MCQ + free response)
+// ---------------------------------------------------------------------------
+
+export type HostedQuestionType = "mcq" | "free_response";
+
+export interface HostedAnswerData {
+  participantId: string;
+  mcqIndex: number | null;
+  freeText: string | null;
+  submittedAt: number;
+}
+
+export interface HostedQuestionData {
+  _id: string;
+  questionType: HostedQuestionType;
+  prompt: string;
+  /** MCQ only */
+  options: string[] | null;
+  /** Null until resultsVisible (or always present for host) */
+  correctIndex: number | null;
+  isActive: boolean;
+  resultsVisible: boolean;
+  timeLimitMs: number | null;
+  startedAt: number | null;
+  closedAt: number | null;
+  createdAt: number;
+  answerCount: number;
+  myAnswer: { mcqIndex: number | null; freeText: string | null } | null;
+  /** Present only in host view */
+  answers: HostedAnswerData[] | null;
+}
+
+// ---------------------------------------------------------------------------
+// Unified activities (merges polls + hostedQuestions into one feed)
+// ---------------------------------------------------------------------------
+
+/** Fields shared across all four activity variants. */
+interface UnifiedActivityBase {
+  _id: string;
+  createdAt: number;
+  isActive: boolean;
+  resultsVisible: boolean;
+  /** The question / prompt text. */
+  prompt: string;
+  answerCount: number;
+}
+
+/** Poll — Multiple Choice */
+export interface UnifiedPollMcq extends UnifiedActivityBase {
+  source: "poll";
+  kind: "poll_mcq";
+  /** MCQ option labels */
+  options: string[];
+  /** Vote counts per option — null when resultsVisible is false */
+  voteCounts: number[] | null;
+  totalVotes: number;
+  /** This participant's chosen option index, or -1 if not voted */
+  myVote: number;
+}
+
+/** Poll — Confidence (5-star) */
+export interface UnifiedPollConfidence extends UnifiedActivityBase {
+  source: "poll";
+  kind: "poll_confidence";
+  /** 5 slots (stars 1–5). Null when resultsVisible is false */
+  voteCounts: number[] | null;
+  totalVotes: number;
+  /** Star index (0–4) chosen by this participant, or -1 if not voted */
+  myVote: number;
+}
+
+/** Question — Multiple Choice */
+export interface UnifiedQuestionMcq extends UnifiedActivityBase {
+  source: "question";
+  kind: "question_mcq";
+  options: string[];
+  /** Null until resultsVisible (or always for host) */
+  correctIndex: number | null;
+  timeLimitMs: number | null;
+  startedAt: number | null;
+  closedAt: number | null;
+  myAnswer: { mcqIndex: number | null; freeText: string | null } | null;
+  /** Host only — null for students */
+  answers: HostedAnswerData[] | null;
+}
+
+/** Question — Free Response */
+export interface UnifiedQuestionFrq extends UnifiedActivityBase {
+  source: "question";
+  kind: "question_frq";
+  timeLimitMs: number | null;
+  startedAt: number | null;
+  closedAt: number | null;
+  myAnswer: { mcqIndex: number | null; freeText: string | null } | null;
+  /** Host only — null for students */
+  answers: HostedAnswerData[] | null;
+}
+
+export type UnifiedActivity =
+  | UnifiedPollMcq
+  | UnifiedPollConfidence
+  | UnifiedQuestionMcq
+  | UnifiedQuestionFrq;

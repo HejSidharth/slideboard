@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as activities from "../activities.js";
+import type * as hostedQuestions from "../hostedQuestions.js";
 import type * as http from "../http.js";
 import type * as liveSlide from "../liveSlide.js";
 import type * as messages from "../messages.js";
@@ -23,6 +25,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  activities: typeof activities;
+  hostedQuestions: typeof hostedQuestions;
   http: typeof http;
   liveSlide: typeof liveSlide;
   messages: typeof messages;

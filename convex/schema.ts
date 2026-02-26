@@ -158,4 +158,52 @@ export default defineSchema({
     snapshotJson: v.string(),
     updatedAt: v.number(),
   }).index("by_presentation_id", ["presentationId"]),
+
+  // -------------------------------------------------------------------------
+  // Host-authored structured questions (MCQ + free response, optional timer)
+  // -------------------------------------------------------------------------
+
+  /**
+   * One row per host-authored question. The host creates these from the editor
+   * and students answer them from the join page.
+   */
+  hostedQuestions: defineTable({
+    presentationId: v.string(),
+    /** SHA-256 hex of raw host token — stored for auth, never returned */
+    hostToken: v.string(),
+    questionType: v.union(v.literal("mcq"), v.literal("free_response")),
+    prompt: v.string(),
+    /** MCQ only — list of answer choices */
+    options: v.optional(v.array(v.string())),
+    /** MCQ only — 0-based index of the correct option */
+    correctIndex: v.optional(v.number()),
+    isActive: v.boolean(),
+    resultsVisible: v.boolean(),
+    /** Duration in ms; null/absent = untimed */
+    timeLimitMs: v.optional(v.number()),
+    /** Epoch ms when the host activated the question (started the timer) */
+    startedAt: v.optional(v.number()),
+    /** Epoch ms when the question was closed (manually or by auto-close) */
+    closedAt: v.optional(v.number()),
+    clientRequestId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_presentation", ["presentationId", "createdAt"])
+    .index("by_client_request", ["presentationId", "clientRequestId"]),
+
+  /**
+   * One row per student answer. Upserted — one answer per participant per
+   * question. MCQ stores optionIndex; free response stores freeText.
+   */
+  hostedAnswers: defineTable({
+    questionId: v.id("hostedQuestions"),
+    participantId: v.string(),
+    /** MCQ: selected option index */
+    mcqIndex: v.optional(v.number()),
+    /** Free response: student's text answer */
+    freeText: v.optional(v.string()),
+    submittedAt: v.number(),
+  })
+    .index("by_question", ["questionId"])
+    .index("by_question_participant", ["questionId", "participantId"]),
 });

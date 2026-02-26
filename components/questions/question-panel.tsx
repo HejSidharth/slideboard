@@ -121,18 +121,18 @@ export function QuestionPanel({
 
       {/* Ask input */}
       <div className="shrink-0 border-t border-border p-3">
-        <div className="flex gap-2">
+        <div className="relative">
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask a question anonymously…"
-            className="min-h-[60px] resize-none text-sm"
+            className="min-h-[72px] resize-none pr-12 text-sm"
             maxLength={500}
           />
           <Button
-            size="icon"
-            className="h-auto shrink-0 self-end"
+            size="icon-sm"
+            className="absolute right-1.5 bottom-1.5"
             onClick={handleSubmit}
             disabled={!text.trim() || submitting}
           >

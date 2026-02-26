@@ -21,14 +21,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SlideSidebar } from "@/components/editor/slide-sidebar";
 import { SlideControls } from "@/components/editor/slide-controls";
 import { ChatPanel } from "@/components/chat/chat-panel";
-import { PollPanel } from "@/components/polls/poll-panel";
+import { ActivityPanel } from "@/components/activities/activity-panel";
 import { QuestionPanel } from "@/components/questions/question-panel";
 import { ShareDialog } from "@/components/editor/share-dialog";
 import { CalculatorPanel } from "@/components/editor/calculator-panel";
 import { CalculatorDockPanel } from "@/components/editor/calculator-panel";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
 import type { CalculatorMode } from "@/components/editor/calculator-panel";
-import { usePollNotifications } from "@/hooks/use-poll-notifications";
+import { useActivityNotifications } from "@/hooks/use-activity-notifications";
 import { useQuestionNotifications } from "@/hooks/use-question-notifications";
 import { useHostToken } from "@/hooks/use-host-token";
 import { useOwnerToken } from "@/hooks/use-owner-token";
@@ -41,7 +41,7 @@ import {
   Pencil,
   Calculator,
   ImageDown,
-  BarChart3,
+  LayoutList,
   Share2,
   HelpCircle,
 } from "lucide-react";
@@ -92,12 +92,12 @@ export default function PresentationEditorPage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  type RightPanelTab = "assistant" | "polls" | "questions" | null;
+  type RightPanelTab = "assistant" | "activities" | "questions" | null;
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(() => {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("slideboard-right-panel-tab");
     if (stored === "assistant") return stored;
-    if (hasConvex && (stored === "polls" || stored === "questions")) return stored;
+    if (hasConvex && (stored === "activities" || stored === "questions")) return stored;
     return null;
   });
   const [calculatorOpen, setCalculatorOpen] = useState<boolean>(() => {
@@ -593,19 +593,19 @@ export default function PresentationEditorPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant={rightPanelTab === "polls" ? "default" : "ghost"}
+                variant={rightPanelTab === "activities" ? "default" : "ghost"}
                 size="icon"
                 disabled={!hasConvex}
                 onClick={() =>
                   hasConvex &&
-                  setRightPanelTab((tab) => (tab === "polls" ? null : "polls"))
+                  setRightPanelTab((tab) => (tab === "activities" ? null : "activities"))
                 }
               >
-                <BarChart3 className="h-4 w-4" />
+                <LayoutList className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {hasConvex ? "Polls" : "Polls (set NEXT_PUBLIC_CONVEX_URL)"}
+              {hasConvex ? "Activities" : "Activities (set NEXT_PUBLIC_CONVEX_URL)"}
             </TooltipContent>
           </Tooltip>
 
@@ -719,10 +719,12 @@ export default function PresentationEditorPage() {
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <ChatPanel className="h-full" />
             </div>
-          ) : rightPanelTab === "polls" && hasConvex ? (
+          ) : rightPanelTab === "activities" && hasConvex ? (
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
-              <PollPanel
+              <ActivityPanel
                 presentationId={presentationId}
+                isHost={true}
+                hostToken={hostToken}
                 className="h-full"
               />
             </div>
@@ -803,7 +805,7 @@ function EditorConvexNotifications({
   hostToken: string;
   ownerToken: string;
 }) {
-  usePollNotifications(presentationId);
+  useActivityNotifications(presentationId);
   useQuestionNotifications(presentationId, hostToken);
 
   // Background cloud sync — push on each updatedAt change, debounced 2 s
