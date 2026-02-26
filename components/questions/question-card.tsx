@@ -5,6 +5,16 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CheckCircle2, ChevronUp, Circle, EyeOff, Eye, Trash2 } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -39,7 +49,8 @@ export function QuestionCard({
   const setHidden = useMutation(api.questions.setHidden);
   const remove = useMutation(api.questions.remove);
 
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const isOwnQuestion = question.askedBy === participantId;
   const canUpvote = !isOwnQuestion && !question.isAnswered;
@@ -68,25 +79,32 @@ export function QuestionCard({
     });
   }, [hostToken, setHidden, question._id, question.isHidden]);
 
-  const handleRemove = useCallback(() => {
+  const handleOpenDeleteDialog = useCallback(() => {
     if (!hostToken) return;
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      setTimeout(() => setConfirmDelete(false), 3000);
-      return;
+    setDeleteDialogOpen(true);
+  }, [hostToken]);
+
+  const handleConfirmRemove = useCallback(async () => {
+    if (!hostToken || deleting) return;
+    setDeleting(true);
+    try {
+      await remove({ questionId: question._id, hostToken });
+      setDeleteDialogOpen(false);
+    } finally {
+      setDeleting(false);
     }
-    remove({ questionId: question._id, hostToken });
-  }, [hostToken, remove, question._id, confirmDelete]);
+  }, [hostToken, deleting, remove, question._id]);
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border border-border bg-card p-3 transition-opacity",
-        question.isAnswered && "opacity-60",
-        question.isHidden && "border-dashed opacity-50"
-      )}
-    >
-      <div className="flex items-start gap-3">
+    <>
+      <div
+        className={cn(
+          "rounded-lg border border-border bg-card p-3 transition-opacity",
+          question.isAnswered && "opacity-60",
+          question.isHidden && "border-dashed opacity-50"
+        )}
+      >
+        <div className="flex items-start gap-3">
         {/* Upvote column */}
         <div className="flex shrink-0 flex-col items-center gap-0.5 pt-0.5">
           <button
@@ -149,75 +167,90 @@ export function QuestionCard({
           </div>
         </div>
 
-        {/* Host actions */}
-        {showHostActions && (
-          <div className="flex shrink-0 items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-6 w-6",
-                    question.isAnswered && "text-emerald-500"
-                  )}
-                  onClick={handleToggleAnswered}
-                >
-                  {question.isAnswered ? (
-                    <CheckCircle2 className="h-3 w-3" />
-                  ) : (
-                    <Circle className="h-3 w-3" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {question.isAnswered ? "Unmark as answered" : "Mark as answered"}
-              </TooltipContent>
-            </Tooltip>
+          {/* Host actions */}
+          {showHostActions && (
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      "h-6 w-6",
+                      question.isAnswered && "text-emerald-500"
+                    )}
+                    onClick={handleToggleAnswered}
+                  >
+                    {question.isAnswered ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : (
+                      <Circle className="h-3 w-3" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {question.isAnswered ? "Unmark as answered" : "Mark as answered"}
+                </TooltipContent>
+              </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={handleToggleHidden}
-                >
-                  {question.isHidden ? (
-                    <Eye className="h-3 w-3" />
-                  ) : (
-                    <EyeOff className="h-3 w-3" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {question.isHidden ? "Show to students" : "Hide from students"}
-              </TooltipContent>
-            </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={handleToggleHidden}
+                  >
+                    {question.isHidden ? (
+                      <Eye className="h-3 w-3" />
+                    ) : (
+                      <EyeOff className="h-3 w-3" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {question.isHidden ? "Show to students" : "Hide from students"}
+                </TooltipContent>
+              </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-6 w-6",
-                    confirmDelete
-                      ? "text-destructive"
-                      : "text-muted-foreground hover:text-destructive"
-                  )}
-                  onClick={handleRemove}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {confirmDelete ? "Click again to confirm delete" : "Delete question"}
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    onClick={handleOpenDeleteDialog}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Delete question</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete question?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The question and its upvotes will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmRemove}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

@@ -6,6 +6,16 @@ import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Eye,
   EyeOff,
   Trash2,
@@ -152,6 +162,9 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
   const [submitted, setSubmitted] = useState(
     activity.source === "question" ? !!activity.myAnswer : false,
   );
+  const [questionDeleteDialogOpen, setQuestionDeleteDialogOpen] =
+    useState(false);
+  const [deletingQuestion, setDeletingQuestion] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [desmosOpen, setDesmosOpen] = useState(false);
   const [excalidrawOpen, setExcalidrawOpen] = useState(false);
@@ -277,15 +290,22 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
 
   const handleQuestionDelete = useCallback(() => {
     if (!hostToken) return;
-    if (!deleteConfirm) {
-      setDeleteConfirm(true);
-      return;
+    setQuestionDeleteDialogOpen(true);
+  }, [hostToken]);
+
+  const handleConfirmQuestionDelete = useCallback(async () => {
+    if (!hostToken || deletingQuestion) return;
+    setDeletingQuestion(true);
+    try {
+      await removeQuestion({
+        questionId: activity._id as Id<"hostedQuestions">,
+        hostToken,
+      });
+      setQuestionDeleteDialogOpen(false);
+    } finally {
+      setDeletingQuestion(false);
     }
-    removeQuestion({
-      questionId: activity._id as Id<"hostedQuestions">,
-      hostToken,
-    }).catch(() => {});
-  }, [activity._id, deleteConfirm, hostToken, removeQuestion]);
+  }, [activity._id, deletingQuestion, hostToken, removeQuestion]);
 
   const handleSubmitAnswer = useCallback(async () => {
     if (submitting || isClosed) return;
@@ -413,15 +433,8 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
           <Button
             variant="ghost"
             size="icon"
-            className={cn(
-              "h-7 w-7",
-              deleteConfirm
-                ? "text-destructive hover:text-destructive"
-                : "text-muted-foreground hover:text-destructive",
-            )}
-            title={
-              deleteConfirm ? "Click again to confirm delete" : "Delete"
-            }
+            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            title="Delete question"
             onClick={handleQuestionDelete}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -429,6 +442,33 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
         </>
       )}
     </div>
+  );
+
+  const questionDeleteDialog = isHost && activity.source === "question" && (
+    <AlertDialog
+      open={questionDeleteDialogOpen}
+      onOpenChange={setQuestionDeleteDialogOpen}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete question?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This action cannot be undone. The activity and all submitted
+            answers will be permanently removed.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deletingQuestion}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirmQuestionDelete}
+            disabled={deletingQuestion}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {deletingQuestion ? "Deleting..." : "Delete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 
   // -------------------------------------------------------------------------
@@ -869,6 +909,7 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
           open={excalidrawOpen}
           onClose={() => setExcalidrawOpen(false)}
         />
+        {questionDeleteDialog}
       </>
     );
   }
@@ -999,6 +1040,7 @@ export function ActivityCard({ activity, isHost, hostToken, participantId }: Pro
           open={excalidrawOpen}
           onClose={() => setExcalidrawOpen(false)}
         />
+        {questionDeleteDialog}
       </>
     );
   }
