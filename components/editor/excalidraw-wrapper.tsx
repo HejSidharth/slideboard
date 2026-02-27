@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import "@excalidraw/excalidraw/index.css";
 import type { AppState, BinaryFiles, ExcalidrawElement } from "@/types";
 import { sanitizeExcalidrawElementIndices } from "@/lib/excalidraw-indices";
+import { ensureBundledExcalidrawLibraries } from "@/lib/excalidraw-library";
 
 const ExcalidrawComponent = dynamic(
   async () => {
@@ -50,6 +51,13 @@ interface ExcalidrawApiLike {
     elements?: readonly ExcalidrawElement[];
     appState?: Partial<AppState>;
   }) => void;
+  updateLibrary?: (params: {
+    libraryItems: unknown;
+    merge?: boolean;
+    prompt?: boolean;
+    openLibraryMenu?: boolean;
+    defaultStatus?: "published" | "unpublished";
+  }) => Promise<unknown> | unknown;
 }
 
 function normalizeInitialAppState(appState: Partial<AppState>): Partial<AppState> {
@@ -100,8 +108,14 @@ export default function ExcalidrawWrapper({
     (api: unknown) => {
       apiRef.current = api as ExcalidrawApiLike;
       onReady?.(api);
+
+      if (isReadonly) return;
+
+      ensureBundledExcalidrawLibraries(api as ExcalidrawApiLike).catch((error) => {
+        console.warn("Failed to preload Excalidraw libraries", error);
+      });
     },
-    [onReady],
+    [isReadonly, onReady],
   );
 
   useEffect(() => {
