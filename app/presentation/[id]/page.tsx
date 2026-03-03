@@ -169,6 +169,8 @@ export default function PresentationEditorPage() {
   const updateSlide = usePresentationStore((s) => s.updateSlide);
   const renamePresentation = usePresentationStore((s) => s.renamePresentation);
   const addSlide = usePresentationStore((s) => s.addSlide);
+  const goToNextSlide = usePresentationStore((s) => s.goToNextSlide);
+  const goToPreviousSlide = usePresentationStore((s) => s.goToPreviousSlide);
   const exportPresentation = usePresentationStore((s) => s.exportPresentation);
   const hydrateSlides = usePresentationStore((s) => s.hydrateSlides);
 
@@ -949,6 +951,22 @@ export default function PresentationEditorPage() {
 
       if (isTypingTarget) return;
 
+      const hasNavigationModifier = event.metaKey || event.ctrlKey || event.altKey || event.shiftKey;
+      if (!hasNavigationModifier) {
+        switch (event.key) {
+          case "ArrowLeft":
+          case "ArrowUp":
+            event.preventDefault();
+            goToPreviousSlide(presentationId);
+            return;
+          case "ArrowRight":
+          case "ArrowDown":
+            event.preventDefault();
+            goToNextSlide(presentationId);
+            return;
+        }
+      }
+
       const hasModifier = event.metaKey || event.ctrlKey;
       if (!hasModifier || event.key.toLowerCase() !== "j") return;
 
@@ -965,7 +983,13 @@ export default function PresentationEditorPage() {
 
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [addSlide, presentationId, toggleRightPanelTab]);
+  }, [
+    addSlide,
+    goToNextSlide,
+    goToPreviousSlide,
+    presentationId,
+    toggleRightPanelTab,
+  ]);
 
   useEffect(() => {
     const canvasRegion = canvasRegionRef.current;
