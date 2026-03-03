@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Github } from "lucide-react";
+import { Github, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 
@@ -68,7 +68,10 @@ export default function HomePage() {
                 <Link href="/dashboard">Start creating</Link>
               </Button>
               <Button variant="outline" asChild className="h-11 px-6 rounded-lg text-sm font-medium">
-                <Link href="/dashboard">View Demo</Link>
+                <a href="https://github.com/HejSidharth/slideboard">
+                  <Star className="mr-2 h-4 w-4" />
+                  Star on GitHub
+                </a>
               </Button>
             </div>
           </div>
@@ -84,9 +87,9 @@ export default function HomePage() {
                 </p>
               </div>
               <div>
-                <h3 className="font-medium text-foreground mb-2 text-sm">Local First</h3>
+                <h3 className="font-medium text-foreground mb-2 text-sm">Fully Open Source</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Your data stays on your device. No accounts, no cloud, no compromises.
+                  Always self hostable, so you can deploy anywhere and keep full control.
                 </p>
               </div>
               <div>
