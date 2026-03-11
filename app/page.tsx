@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { Github, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,12 +47,20 @@ export default function HomePage() {
         <div className="max-w-[760px] w-full px-4 md:px-6">
           <div className="pt-16 md:pt-20 pb-8">
             <a 
-              href="https://hejamadi.com" 
+              href="https://startup.z.ai/" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="inline-flex items-center rounded-full border border-border bg-secondary px-3 py-1 text-xs font-medium text-muted-foreground mb-6 hover:bg-muted hover:text-foreground transition-colors animate-fade-up"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1 text-xs font-medium text-muted-foreground mb-6 hover:bg-muted hover:text-foreground transition-colors animate-fade-up"
             >
-              Made by Hejamadi
+              <span>Backed by</span>
+              <Image
+                src="/z-ai-logo.png"
+                alt="Z.ai logo"
+                width={16}
+                height={16}
+                className="rounded-[3px]"
+              />
+              <span>AI</span>
             </a>
             <h1 className="text-5xl lg:text-6xl font-semibold leading-[1.05] tracking-[-0.03em] text-balance mb-6 animate-fade-up [animation-delay:120ms]">
               Whiteboard lessons,{" "}
