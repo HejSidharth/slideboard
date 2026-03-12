@@ -27,6 +27,7 @@ interface DockedCalculatorPanelProps {
 }
 
 const DESMOS_URL = "https://www.desmos.com/calculator";
+
 const DESKTOP_WIDTH = 400;
 const DESKTOP_HEIGHT = 500;
 const EDGE_GAP = 12;
@@ -87,7 +88,7 @@ function DesmosEmbed({
         <p className="text-sm text-muted-foreground">Calculator failed to load.</p>
         <Button
           size="sm"
-          onClick={() => window.open("https://www.desmos.com/calculator", "_blank", "noopener,noreferrer")}
+          onClick={() => window.open(DESMOS_URL, "_blank", "noopener,noreferrer")}
         >
           Open Desmos in new tab
         </Button>
@@ -261,7 +262,7 @@ export function CalculatorPanel({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => window.open("https://www.desmos.com/calculator", "_blank", "noopener,noreferrer")}
+            onClick={() => window.open(DESMOS_URL, "_blank", "noopener,noreferrer")}
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </Button>
@@ -280,7 +281,11 @@ export function CalculatorPanel({
   return createPortal(content, document.body);
 }
 
-export function CalculatorDockPanel({ className, onModeChange, onClose }: DockedCalculatorPanelProps) {
+export function CalculatorDockPanel({
+  className,
+  onModeChange,
+  onClose,
+}: DockedCalculatorPanelProps) {
   const [frameFailed, setFrameFailed] = useState(false);
 
   return (
@@ -302,7 +307,7 @@ export function CalculatorDockPanel({ className, onModeChange, onClose }: Docked
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
-                onClick={() => window.open("https://www.desmos.com/calculator", "_blank", "noopener,noreferrer")}
+                onClick={() => window.open(DESMOS_URL, "_blank", "noopener,noreferrer")}
               >
                 <ExternalLink className="h-3.5 w-3.5" />
               </Button>

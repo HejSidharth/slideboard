@@ -48,7 +48,7 @@ export interface StoredSlideSnapshot {
   slideId: string;
   presentationId: string;
   slideIndex: number;
-  engine: "tldraw" | "excalidraw";
+  engine: "tldraw" | "excalidraw" | "embed";
   sceneVersion: number;
   /** tldraw: JSON.stringify(snapshot) with convexUrl refs */
   snapshotJson: string | null;
@@ -61,6 +61,13 @@ export interface StoredSlideSnapshot {
    * convexUrl refs for cloud-synced slides).
    */
   filesJson: string | null;
+  slideQuestionDraftJson?: string | null;
+  slideQuestionAssetJson?: string | null;
+  provider?: "generic" | "kahoot" | "gimkit" | "quizizz" | "youtube";
+  url?: string | null;
+  embedUrl?: string | null;
+  title?: string | null;
+  renderMode?: "embed" | "launch-only";
   createdAt: number;
   updatedAt: number;
   /** Last time pulled from Convex. null = local-only. */

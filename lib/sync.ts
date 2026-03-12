@@ -23,6 +23,7 @@ import {
   setPresentationMeta,
   getPresentationMeta,
   getSlideSnapshot,
+  getCachedAssetUrl,
   setCachedAssetUrl,
   type StoredSlideSnapshot,
 } from "@/lib/slide-cache";
@@ -34,7 +35,15 @@ import {
 } from "@/lib/asset-extractor";
 import { sanitizeExcalidrawElementIndices } from "@/lib/excalidraw-indices";
 import { getOrCreateOwnerToken } from "@/hooks/use-owner-token";
-import type { Presentation, SlideData, ExcalidrawSlideData, TldrawSlideData } from "@/types";
+import type {
+  Presentation,
+  SlideData,
+  ExcalidrawSlideData,
+  TldrawSlideData,
+  EmbedSlideData,
+  SlideMcqCanvasAsset,
+  SlideMcqDraft,
+} from "@/types";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -42,6 +51,12 @@ import type { Presentation, SlideData, ExcalidrawSlideData, TldrawSlideData } fr
 
 function getConvexUrl(): string {
   return process.env.NEXT_PUBLIC_CONVEX_URL ?? "";
+}
+
+function getConvexSiteUrl(): string {
+  return process.env.NEXT_PUBLIC_CONVEX_SITE_URL
+    ?? process.env.NEXT_PUBLIC_CONVEX_URL
+    ?? "";
 }
 
 /**
@@ -119,6 +134,10 @@ async function syncSlideToConvex(
   ownerToken: string,
 ): Promise<void> {
   const { slideId, presentationId, slideIndex, engine, sceneVersion, createdAt, updatedAt } = snapshot;
+
+  if (engine === "embed") {
+    return;
+  }
 
   if (engine === "excalidraw") {
     const filesJson = snapshot.filesJson;
@@ -310,6 +329,10 @@ async function rehydrateSnapshot(
   snapshot: StoredSlideSnapshot,
   convex: ConvexReactClient,
 ): Promise<StoredSlideSnapshot> {
+  if (snapshot.engine === "embed") {
+    return snapshot;
+  }
+
   // Fetch asset URLs for this slide
   const assets = await convex.query(api.slides.getSlideAssets, {
     slideId: snapshot.slideId,
@@ -339,6 +362,48 @@ async function rehydrateSnapshot(
       snapshotJson: JSON.stringify({ ...parsed, store: rehydratedStore }),
     };
   }
+}
+
+async function rehydrateCachedSnapshot(
+  snapshot: StoredSlideSnapshot,
+): Promise<StoredSlideSnapshot> {
+  if (snapshot.engine === "embed") {
+    return snapshot;
+  }
+
+  const convexSiteUrl = getConvexSiteUrl().replace(/\/$/, "");
+  const resolveUrl = async (storageId: string): Promise<string | null> => {
+    const cachedUrl = await getCachedAssetUrl(storageId);
+    if (cachedUrl) {
+      return cachedUrl;
+    }
+
+    if (!convexSiteUrl) {
+      return null;
+    }
+
+    const fallbackUrl = `${convexSiteUrl}/asset?id=${storageId}`;
+    await setCachedAssetUrl(storageId, fallbackUrl);
+    return fallbackUrl;
+  };
+
+  if (snapshot.engine === "excalidraw") {
+    const files: Record<string, unknown> = snapshot.filesJson
+      ? JSON.parse(snapshot.filesJson)
+      : {};
+    const rehydrated = await rehydrateExcalidrawFiles(files, resolveUrl);
+    return { ...snapshot, filesJson: JSON.stringify(rehydrated) };
+  }
+
+  const parsed: { store?: Record<string, unknown> } = snapshot.snapshotJson
+    ? JSON.parse(snapshot.snapshotJson)
+    : {};
+  const store = parsed.store ?? {};
+  const rehydratedStore = await rehydrateTldrawStore(store, resolveUrl);
+  return {
+    ...snapshot,
+    snapshotJson: JSON.stringify({ ...parsed, store: rehydratedStore }),
+  };
 }
 
 /**
@@ -432,12 +497,33 @@ export async function pullPresentation(
  * (they're volatile edit-session state, not durable data).
  */
 export function snapshotToSlideData(snapshot: StoredSlideSnapshot): SlideData {
+  const slideQuestionDraft = snapshot.slideQuestionDraftJson
+    ? (JSON.parse(snapshot.slideQuestionDraftJson) as SlideMcqDraft)
+    : undefined;
+  const slideQuestionAsset = snapshot.slideQuestionAssetJson
+    ? (JSON.parse(snapshot.slideQuestionAssetJson) as SlideMcqCanvasAsset)
+    : undefined;
   const base = {
     id: snapshot.slideId,
     sceneVersion: snapshot.sceneVersion,
     createdAt: snapshot.createdAt,
     updatedAt: snapshot.updatedAt,
+    slideQuestionDraft,
+    slideQuestionAsset,
   };
+
+  if (snapshot.engine === "embed") {
+    const slide: EmbedSlideData = {
+      ...base,
+      engine: "embed",
+      provider: snapshot.provider ?? "kahoot",
+      url: snapshot.url ?? "",
+      embedUrl: snapshot.embedUrl ?? null,
+      title: snapshot.title ?? "Embedded activity",
+      renderMode: snapshot.renderMode ?? "launch-only",
+    };
+    return slide;
+  }
 
   if (snapshot.engine === "excalidraw") {
     const parsedElements = snapshot.elementsJson ? JSON.parse(snapshot.elementsJson) : [];
@@ -474,7 +560,10 @@ export async function loadSlidesFromCache(
   try {
     const snapshots = await getSlideSnapshotsByPresentation(presentationId);
     snapshots.sort((a, b) => a.slideIndex - b.slideIndex);
-    return snapshots.map((s) => ({
+    const rehydratedSnapshots = await Promise.all(
+      snapshots.map((snapshot) => rehydrateCachedSnapshot(snapshot)),
+    );
+    return rehydratedSnapshots.map((s) => ({
       slideId: s.slideId,
       slideData: snapshotToSlideData(s),
     }));
@@ -493,7 +582,7 @@ export async function loadSlideFromCache(
   try {
     const snapshot = await getSlideSnapshot(slideId);
     if (!snapshot) return null;
-    return snapshotToSlideData(snapshot);
+    return snapshotToSlideData(await rehydrateCachedSnapshot(snapshot));
   } catch (err) {
     console.error("[sync] loadSlideFromCache failed", err);
     return null;

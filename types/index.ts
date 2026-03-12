@@ -10,17 +10,36 @@ import type {
 export type { TLRecord, TLShape, TLShapeId, TLStore, Editor, StoreSnapshot };
 
 export type CanvasEngine = "tldraw" | "excalidraw";
+export type SlideEngine = CanvasEngine | "embed";
+export type EmbedProvider = "generic" | "kahoot" | "gimkit" | "quizizz" | "youtube";
+export type EmbedRenderMode = "embed" | "launch-only";
 
 export type ExcalidrawElement = Record<string, unknown>;
 export type BinaryFiles = Record<string, unknown>;
 export type AppState = Record<string, unknown>;
 
+export interface SlideMcqDraft {
+  prompt: string;
+  options: string[];
+  correctIndex: number | null;
+}
+
+export interface SlideMcqCanvasAsset {
+  engine: CanvasEngine;
+  shapeId?: string;
+  assetId?: string;
+  elementId?: string;
+  fileId?: string;
+}
+
 interface BaseSlideData {
   id: string;
-  engine: CanvasEngine;
+  engine: SlideEngine;
   sceneVersion: number;
   createdAt: number;
   updatedAt: number;
+  slideQuestionDraft?: SlideMcqDraft;
+  slideQuestionAsset?: SlideMcqCanvasAsset;
 }
 
 export interface TldrawSlideData extends BaseSlideData {
@@ -41,7 +60,16 @@ export interface ExcalidrawSlideData extends BaseSlideData {
   problemBaselineUpdatedAt?: number;
 }
 
-export type SlideData = TldrawSlideData | ExcalidrawSlideData;
+export interface EmbedSlideData extends BaseSlideData {
+  engine: "embed";
+  provider: EmbedProvider;
+  url: string;
+  embedUrl: string | null;
+  title: string;
+  renderMode: EmbedRenderMode;
+}
+
+export type SlideData = TldrawSlideData | ExcalidrawSlideData | EmbedSlideData;
 
 export interface Folder {
   id: string;
@@ -81,6 +109,16 @@ export interface PresentationStore {
   deleteFolder: (id: string) => void;
 
   addSlide: (presentationId: string) => void;
+  addEmbedSlide: (
+    presentationId: string,
+    input: {
+      provider: EmbedProvider;
+      url: string;
+      embedUrl: string | null;
+      title: string;
+      renderMode: EmbedRenderMode;
+    },
+  ) => void;
   deleteSlide: (presentationId: string, slideIndex: number) => void;
   duplicateSlide: (presentationId: string, slideIndex: number) => void;
   reorderSlides: (

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getProviderLabel } from "@/lib/activity-embeds";
 import { Copy, Trash2, Eraser, GripVertical, RotateCcw, Bookmark, BookmarkCheck, BookmarkX } from "lucide-react";
 import { getSlidePreview } from "@/lib/slide-previews";
 import type { SlideData } from "@/types";
@@ -87,12 +88,16 @@ export function SlideThumbnail({
   };
 
   const shapeCount =
-    slide.engine === "tldraw"
+    slide.engine === "embed"
+      ? 1
+      : slide.engine === "tldraw"
       ? countShapesInSnapshot(slide.snapshot)
       : (slide.elements ?? []).filter((element) => !(element as { isDeleted?: boolean }).isDeleted).length;
-  const hasContent = shapeCount > 0;
+  const hasContent = slide.engine === "embed" || shapeCount > 0;
   const hasProblemState =
-    slide.engine === "tldraw"
+    slide.engine === "embed"
+      ? false
+      : slide.engine === "tldraw"
       ? slide.problemBaselineSnapshot !== undefined
       : !!slide.problemBaselineElements;
 
@@ -180,7 +185,21 @@ export function SlideThumbnail({
             </div>
 
             <div className="relative m-2 aspect-video overflow-hidden rounded-md border border-border bg-background flex items-center justify-center">
-              {previewUrl ? (
+              {slide.engine === "embed" ? (
+                <div className="flex h-full w-full flex-col items-start justify-between bg-linear-to-br from-secondary to-background p-3">
+                  <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    {getProviderLabel(slide.provider)}
+                  </span>
+                  <div>
+                    <p className="line-clamp-2 text-xs font-medium text-foreground">
+                      {slide.title}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Embedded content
+                    </p>
+                  </div>
+                </div>
+              ) : previewUrl ? (
                 <Image
                   src={previewUrl}
                   alt={`Slide ${index + 1} preview`}
@@ -209,15 +228,17 @@ export function SlideThumbnail({
             Clear Slide
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onSelect={onSaveProblemState}>
+          <ContextMenuItem onSelect={onSaveProblemState} disabled={slide.engine === "embed"}>
             {hasProblemState ? <BookmarkCheck className="h-4 w-4 mr-2" /> : <Bookmark className="h-4 w-4 mr-2" />}
-            {hasProblemState ? "Update Problem State" : "Set Problem State"}
+            {slide.engine === "embed"
+              ? "Problem State Unavailable"
+              : hasProblemState ? "Update Problem State" : "Set Problem State"}
           </ContextMenuItem>
-          <ContextMenuItem onSelect={onResetToProblemState} disabled={!hasProblemState}>
+          <ContextMenuItem onSelect={onResetToProblemState} disabled={!hasProblemState || slide.engine === "embed"}>
             <RotateCcw className="h-4 w-4 mr-2" />
             Reset to Problem State
           </ContextMenuItem>
-          <ContextMenuItem onSelect={onClearProblemState} disabled={!hasProblemState}>
+          <ContextMenuItem onSelect={onClearProblemState} disabled={!hasProblemState || slide.engine === "embed"}>
             <BookmarkX className="h-4 w-4 mr-2" />
             Remove Problem State
           </ContextMenuItem>

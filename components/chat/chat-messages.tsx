@@ -7,13 +7,14 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ImagePlus, Loader2, MoreHorizontal, PlusSquare, User } from "lucide-react";
+import { Copy, ImagePlus, Loader2, MoreHorizontal, PlusSquare, User } from "lucide-react";
 import type { ChatMessage } from "@/hooks/use-chat";
 
 interface ChatMessagesProps {
@@ -25,6 +26,7 @@ interface ChatMessagesProps {
     target: "current" | "new",
     sourceElement: HTMLElement | null,
   ) => void;
+  onInsertAsMermaid?: (message: ChatMessage) => void;
 }
 
 export function ChatMessages({
@@ -32,6 +34,7 @@ export function ChatMessages({
   isLoading,
   insertingMessageId = null,
   onInsertAsImage,
+  onInsertAsMermaid,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const bubbleRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -51,6 +54,21 @@ export function ChatMessages({
       bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
     }
   }, [visibleMessages.length, isLoading]);
+
+  const handleCopyMarkdown = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.success("Copied markdown.");
+    } catch (error) {
+      console.error("Failed to copy assistant markdown", error);
+      toast.error("Could not copy this response.");
+    }
+  };
+
+  const extractMermaidBlock = (content: string): string | null => {
+    const match = content.match(/```mermaid\s+([\s\S]*?)```/i);
+    return match?.[1]?.trim() || null;
+  };
 
   if (messages.length === 0) {
     return (
@@ -76,7 +94,12 @@ export function ChatMessages({
   return (
     <div className="flex-1 overflow-y-auto p-4">
       <div className="space-y-4">
-        {visibleMessages.map((message) => (
+        {visibleMessages.map((message) => {
+          const mermaidBlock = message.role === "assistant"
+            ? extractMermaidBlock(message.content)
+            : null;
+
+          return (
           <div
             key={message.id}
             className={cn(
@@ -116,10 +139,10 @@ export function ChatMessages({
                 message.role === "user"
                   ? "rounded-br-md bg-primary text-primary-foreground"
                   : "rounded-bl-md border border-border bg-muted/60",
-                message.role === "assistant" && onInsertAsImage && "pr-8",
+                message.role === "assistant" && (onInsertAsImage || onInsertAsMermaid) && "pr-8",
               )}
             >
-              {message.role === "assistant" && onInsertAsImage && (
+              {message.role === "assistant" && (onInsertAsImage || onInsertAsMermaid) && (
                 <div className="chat-message-actions absolute right-1 top-1">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -139,30 +162,46 @@ export function ChatMessages({
                     <DropdownMenuContent align="end" className="w-56">
                       <DropdownMenuItem
                         onSelect={() =>
-                          onInsertAsImage(
+                          onInsertAsImage?.(
                             message,
                             "current",
                             bubbleRefs.current[message.id] ?? null,
                           )
                         }
-                        disabled={Boolean(insertingMessageId)}
+                        disabled={!onInsertAsImage || Boolean(insertingMessageId)}
                       >
                         <ImagePlus className="h-4 w-4" />
                         Insert image on current slide
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onSelect={() =>
-                          onInsertAsImage(
+                          onInsertAsImage?.(
                             message,
                             "new",
                             bubbleRefs.current[message.id] ?? null,
                           )
                         }
-                        disabled={Boolean(insertingMessageId)}
+                        disabled={!onInsertAsImage || Boolean(insertingMessageId)}
                       >
                         <PlusSquare className="h-4 w-4" />
                         Insert image on new slide
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          void handleCopyMarkdown(message.content);
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copy markdown
+                      </DropdownMenuItem>
+                      {mermaidBlock && onInsertAsMermaid ? (
+                        <DropdownMenuItem
+                          onSelect={() => onInsertAsMermaid(message)}
+                        >
+                          <PlusSquare className="h-4 w-4" />
+                          Insert Mermaid on current slide
+                        </DropdownMenuItem>
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -219,7 +258,8 @@ export function ChatMessages({
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* Loading indicator */}
         {pendingAssistantMessage && (

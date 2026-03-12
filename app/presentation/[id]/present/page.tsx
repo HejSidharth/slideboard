@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { Button } from "@/components/ui/button";
+import { ActivityEmbedSlide } from "@/components/slides/activity-embed-slide";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
 import { PollPanel } from "@/components/polls/poll-panel";
 import { QuestionPanel } from "@/components/questions/question-panel";
@@ -196,7 +197,9 @@ export default function PresentationModePage() {
       style={{ touchAction: "pan-y" }}
     >
       <div className="absolute inset-0">
-        {presentation.canvasEngine === "excalidraw" ? (
+        {currentSlide.engine === "embed" ? (
+          <ActivityEmbedSlide slide={currentSlide} className="h-full w-full" />
+        ) : presentation.canvasEngine === "excalidraw" ? (
           <ExcalidrawWrapper
             key={currentSlide.id}
             initialElements={currentSlide.engine === "excalidraw" ? currentSlide.elements : []}

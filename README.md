@@ -68,11 +68,12 @@ Open the local URL shown in your terminal (usually `localhost` on port `3000`).
 
 ### AI assistant (optional)
 
-The chat assistant uses OpenRouter through a server-side API route.
+The chat assistant uses Z.ai through a server-side API route.
 
 1. Copy `.env.example` to `.env.local`.
-2. Set `OPENROUTER_API_KEY` in `.env.local`.
-3. Set `OPENROUTER_MODEL` in `.env.local` (for example, your preferred free model id).
+2. Set `ZAI_API_KEY` in `.env.local`.
+3. Optionally set `ZAI_MODEL` in `.env.local`. It defaults to `glm-5` for text chat.
+4. Optionally set `ZAI_VISION_MODEL` in `.env.local`. It defaults to `glm-4.6v` for image-assisted assistant actions.
 
 ## Build
 

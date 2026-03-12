@@ -3,10 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Github, Star } from "lucide-react";
+import packageJson from "@/package.json";
 import { Button } from "@/components/ui/button";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 
 export default function HomePage() {
+  const [major = "0", minor = "1"] = packageJson.version.split(".");
+
   return (
     <div className="relative min-h-screen flex flex-col overflow-hidden bg-background">
       <div className="pointer-events-none absolute inset-0 -z-10">
@@ -18,12 +21,20 @@ export default function HomePage() {
       </div>
       <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75 border-b border-border/70">
         <div className="mx-auto flex h-14 w-full max-w-[760px] items-center justify-between gap-2 px-3 animate-fade-down md:h-16 md:gap-3 md:px-6">
-          <Link 
-            href="/" 
-            className="text-sm font-medium tracking-tight transition-opacity hover:opacity-70 md:text-lg"
-          >
-            SlideBoard
-          </Link>
+          <div className="flex items-center">
+            <Link 
+              href="/" 
+              className="text-sm font-medium tracking-tight transition-opacity hover:opacity-70 md:text-lg"
+            >
+              SlideBoard
+            </Link>
+            <Link
+              href="/changelog"
+              className="ml-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground md:text-xs"
+            >
+              v{major}.{minor}
+            </Link>
+          </div>
           
           <div className="flex items-center gap-2 md:gap-3">
             <a

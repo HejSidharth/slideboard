@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Trash2 } from "lucide-react";
+import { FileText, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { useChat } from "@/hooks/use-chat";
 import { captureElementAsPng } from "@/lib/capture-element-png";
@@ -12,6 +12,11 @@ import { ChatInput } from "./chat-input";
 
 interface ChatPanelProps {
   className?: string;
+  onSummarizeSlide?: () => Promise<string>;
+  onSolveSlide?: () => Promise<string>;
+  onCleanSlideNotes?: () => Promise<string>;
+  onGenerateLessonDocs?: (onChunk: (chunk: string) => void) => Promise<string>;
+  onInsertAsMermaid?: (mermaidCode: string) => Promise<void>;
   onInsertAsImage?: (params: {
     dataUrl: string;
     width: number;
@@ -21,15 +26,26 @@ interface ChatPanelProps {
   }) => Promise<void>;
 }
 
-export function ChatPanel({ className, onInsertAsImage }: ChatPanelProps) {
+export function ChatPanel({
+  className,
+  onSummarizeSlide,
+  onSolveSlide,
+  onCleanSlideNotes,
+  onGenerateLessonDocs,
+  onInsertAsMermaid,
+  onInsertAsImage,
+}: ChatPanelProps) {
   const {
     messages,
     isLoading,
     error,
     sendMessage,
+    runAssistantTask,
     clearChat,
   } = useChat();
   const [insertingMessageId, setInsertingMessageId] = useState<string | null>(null);
+  const [insertingMermaidMessageId, setInsertingMermaidMessageId] = useState<string | null>(null);
+  const [runningAction, setRunningAction] = useState<string | null>(null);
 
   const handleInsertAsImage = useCallback(
     async (
@@ -68,6 +84,48 @@ export function ChatPanel({ className, onInsertAsImage }: ChatPanelProps) {
     [onInsertAsImage],
   );
 
+  const handleQuickAction = useCallback(async (
+    actionId: string,
+    label: string,
+    mode: "summarize_slide" | "solve_slide" | "clean_notes" | "build_handout",
+    run: (onChunk: (chunk: string) => void) => Promise<string>,
+  ) => {
+    setRunningAction(actionId);
+    try {
+      await runAssistantTask({
+        label,
+        mode,
+        run,
+      });
+    } catch (error) {
+      console.error("Assistant quick action failed", error);
+    } finally {
+      setRunningAction(null);
+    }
+  }, [runAssistantTask]);
+
+  const handleInsertAsMermaid = useCallback(async (message: { id: string; content: string }) => {
+    if (!onInsertAsMermaid) return;
+    const match = message.content.match(/```mermaid\s+([\s\S]*?)```/i);
+    const mermaidCode = match?.[1]?.trim();
+
+    if (!mermaidCode) {
+      toast.error("This response does not include Mermaid code.");
+      return;
+    }
+
+    setInsertingMermaidMessageId(message.id);
+    try {
+      await onInsertAsMermaid(mermaidCode);
+      toast.success("Inserted Mermaid diagram on the current slide.");
+    } catch (error) {
+      console.error("Failed to insert Mermaid diagram", error);
+      toast.error("Could not insert this Mermaid diagram.");
+    } finally {
+      setInsertingMermaidMessageId(null);
+    }
+  }, [onInsertAsMermaid]);
+
   return (
     <aside className={className}>
       <div className="flex h-full flex-col">
@@ -96,6 +154,81 @@ export function ChatPanel({ className, onInsertAsImage }: ChatPanelProps) {
           <p className="mt-2 text-xs text-muted-foreground">
             Ask for explanations, examples, and classroom-ready notes.
           </p>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-start gap-1.5 text-xs"
+              disabled={isLoading || !onSummarizeSlide}
+              onClick={() =>
+                handleQuickAction(
+                  "summarize",
+                  "Summarize current slide",
+                  "summarize_slide",
+                  () => onSummarizeSlide?.() ?? Promise.reject(new Error("Unavailable")),
+                )
+              }
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {runningAction === "summarize" ? "Working..." : "Summarize slide"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-start gap-1.5 text-xs"
+              disabled={isLoading || !onSolveSlide}
+              onClick={() =>
+                handleQuickAction(
+                  "solve",
+                  "Solve current slide",
+                  "solve_slide",
+                  () => onSolveSlide?.() ?? Promise.reject(new Error("Unavailable")),
+                )
+              }
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              {runningAction === "solve" ? "Working..." : "Solve problem"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-start gap-1.5 text-xs"
+              disabled={isLoading || !onCleanSlideNotes}
+              onClick={() =>
+                handleQuickAction(
+                  "clean",
+                  "Clean notes for current slide",
+                  "clean_notes",
+                  () => onCleanSlideNotes?.() ?? Promise.reject(new Error("Unavailable")),
+                )
+              }
+            >
+              <FileText className="h-3.5 w-3.5" />
+              {runningAction === "clean" ? "Working..." : "Clean notes"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-start gap-1.5 text-xs"
+              disabled={isLoading || !onGenerateLessonDocs}
+              onClick={() =>
+                handleQuickAction(
+                  "docs",
+                  "Generate lesson documents for this deck",
+                  "build_handout",
+                  (onChunk) => onGenerateLessonDocs?.(onChunk) ?? Promise.reject(new Error("Unavailable")),
+                )
+              }
+            >
+              <FileText className="h-3.5 w-3.5" />
+              {runningAction === "docs" ? "Working..." : "Generate lesson docs"}
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -107,8 +240,9 @@ export function ChatPanel({ className, onInsertAsImage }: ChatPanelProps) {
         <ChatMessages
           messages={messages}
           isLoading={isLoading}
-          insertingMessageId={insertingMessageId}
+          insertingMessageId={insertingMessageId ?? insertingMermaidMessageId}
           onInsertAsImage={onInsertAsImage ? handleInsertAsImage : undefined}
+          onInsertAsMermaid={onInsertAsMermaid ? handleInsertAsMermaid : undefined}
         />
 
         <ChatInput onSend={sendMessage} isLoading={isLoading} />

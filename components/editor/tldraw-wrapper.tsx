@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import "tldraw/tldraw.css";
 import { Tldraw, getSnapshot, loadSnapshot } from "tldraw";
+import { DefaultSizeStyle } from "@tldraw/tlschema";
 import type { Editor, StoreSnapshot, TLRecord } from "tldraw";
 import { deleteSlidePreview, setSlidePreview } from "@/lib/slide-previews";
 
@@ -158,6 +159,7 @@ function TldrawWrapper({
       editorRef.current = editor;
       editor.updateInstanceState({ isReadonly });
       syncEditorTheme(editor);
+      editor.setStyleForNextShapes(DefaultSizeStyle, "s");
 
       if (snapshot && canLoadDocumentSnapshot(snapshot)) {
         isHydratingRef.current = true;

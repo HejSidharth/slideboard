@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useConvex } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
 import { nanoid } from "nanoid";
 import { getSnapshot } from "tldraw";
+import { toast } from "sonner";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { loadSlidesFromCache, pushPresentation } from "@/lib/sync";
+import { api } from "@/convex/_generated/api";
 import {
   getNextValidExcalidrawIndex,
   sanitizeExcalidrawElementIndices,
@@ -22,23 +24,42 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlideSidebar } from "@/components/editor/slide-sidebar";
 import { SlideControls } from "@/components/editor/slide-controls";
+import { ActivityEmbedDialog } from "@/components/editor/activity-embed-dialog";
+import { SlideMcqDialog } from "@/components/editor/slide-mcq-dialog";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { ActivityPanel } from "@/components/activities/activity-panel";
 import { QuestionPanel } from "@/components/questions/question-panel";
 import { ShareDialog } from "@/components/editor/share-dialog";
+import { ActivityEmbedSlide } from "@/components/slides/activity-embed-slide";
+import { SlideMcqCard } from "@/components/slides/slide-mcq-card";
 import { CalculatorPanel } from "@/components/editor/calculator-panel";
 import { CalculatorDockPanel } from "@/components/editor/calculator-panel";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
+import { captureElementAsPng } from "@/lib/capture-element-png";
+import {
+  sendChatMessage,
+  type ChatMessage as OpenRouterMessage,
+  type ChatMessageContentPart,
+} from "@/lib/openrouter";
 import type { CalculatorMode } from "@/components/editor/calculator-panel";
 import { useActivityNotifications } from "@/hooks/use-activity-notifications";
 import { useQuestionNotifications } from "@/hooks/use-question-notifications";
 import { useHostToken } from "@/hooks/use-host-token";
 import { useOwnerToken } from "@/hooks/use-owner-token";
 import { useLiveSlideSync } from "@/hooks/use-live-slide-sync";
+import type { ActivityEmbedConfig } from "@/lib/activity-embeds";
 import {
   ArrowLeft,
   Play,
@@ -51,13 +72,17 @@ import {
   LayoutList,
   Share2,
   HelpCircle,
+  Frame,
+  ClipboardList,
+  Rocket,
 } from "lucide-react";
 import type {
   AppState,
   BinaryFiles,
-  CanvasEngine,
   Editor,
   ExcalidrawElement,
+  SlideData,
+  SlideMcqDraft,
   StoreSnapshot,
   TLRecord,
 } from "@/types";
@@ -70,6 +95,7 @@ interface ExcalidrawApiLike {
   updateScene?: (sceneData: {
     elements?: readonly ExcalidrawElement[];
     appState?: Partial<AppState>;
+    files?: BinaryFiles;
     commitToHistory?: boolean;
   }) => void;
 }
@@ -113,6 +139,7 @@ interface AssistantInsertPayload {
 }
 
 type PdfExportFormat = "fit" | "a4";
+type SlideVisionTask = "summarize_slide" | "solve_slide" | "clean_notes";
 
 export default function PresentationEditorPage() {
   const params = useParams();
@@ -121,6 +148,11 @@ export default function PresentationEditorPage() {
   const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [embedDialogOpen, setEmbedDialogOpen] = useState(false);
+  const [embedDialogMode, setEmbedDialogMode] = useState<"create" | "edit">("create");
+  const [slideMcqDialogOpen, setSlideMcqDialogOpen] = useState(false);
+  const [embedUrlInput, setEmbedUrlInput] = useState("");
+  const [embedTitleInput, setEmbedTitleInput] = useState("");
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
@@ -148,17 +180,20 @@ export default function PresentationEditorPage() {
     return stored === "sheet" ? "sheet" : "floating";
   });
   const canvasRegionRef = useRef<HTMLDivElement | null>(null);
-  const wheelDebugCountRef = useRef(0);
   const excalidrawSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tldrawEditorRef = useRef<Editor | null>(null);
   const excalidrawApiRef = useRef<ExcalidrawApiLike | null>(null);
   const tldrawReadySlideIdRef = useRef<string | null>(null);
   const excalidrawReadySlideIdRef = useRef<string | null>(null);
+  const visibleEmbedRef = useRef<HTMLDivElement | null>(null);
   const pdfTldrawEditorRef = useRef<Editor | null>(null);
   const pdfExcalidrawApiRef = useRef<ExcalidrawApiLike | null>(null);
   const pdfTldrawReadySlideIdRef = useRef<string | null>(null);
   const pdfExcalidrawReadySlideIdRef = useRef<string | null>(null);
+  const pdfEmbedRef = useRef<HTMLDivElement | null>(null);
+  const mcqCaptureRef = useRef<HTMLDivElement | null>(null);
   const [pdfRenderSlideIndex, setPdfRenderSlideIndex] = useState<number | null>(null);
+  const [mcqCaptureDraft, setMcqCaptureDraft] = useState<SlideMcqDraft | null>(null);
   const calculatorModeRef = useRef(calculatorMode);
   const calculatorOpenRef = useRef(calculatorOpen);
   const rightPanelTabRef = useRef(rightPanelTab);
@@ -169,10 +204,12 @@ export default function PresentationEditorPage() {
   const updateSlide = usePresentationStore((s) => s.updateSlide);
   const renamePresentation = usePresentationStore((s) => s.renamePresentation);
   const addSlide = usePresentationStore((s) => s.addSlide);
+  const addEmbedSlide = usePresentationStore((s) => s.addEmbedSlide);
   const goToNextSlide = usePresentationStore((s) => s.goToNextSlide);
   const goToPreviousSlide = usePresentationStore((s) => s.goToPreviousSlide);
   const exportPresentation = usePresentationStore((s) => s.exportPresentation);
   const hydrateSlides = usePresentationStore((s) => s.hydrateSlides);
+  const createHostedQuestion = useMutation(api.hostedQuestions.create);
 
   // Host token for Q&A moderation — only available on host surfaces
   const hostToken = useHostToken(presentationId);
@@ -213,6 +250,7 @@ export default function PresentationEditorPage() {
     excalidrawApiRef.current = null;
     tldrawReadySlideIdRef.current = null;
     excalidrawReadySlideIdRef.current = null;
+    visibleEmbedRef.current = null;
   }, [currentSlideId, currentSlideEngine]);
 
   useEffect(() => {
@@ -220,6 +258,7 @@ export default function PresentationEditorPage() {
     pdfExcalidrawApiRef.current = null;
     pdfTldrawReadySlideIdRef.current = null;
     pdfExcalidrawReadySlideIdRef.current = null;
+    pdfEmbedRef.current = null;
   }, [pdfRenderSlideIndex]);
 
   const handleChange = useCallback(
@@ -330,6 +369,94 @@ export default function PresentationEditorPage() {
     }
   };
 
+  const resetEmbedDialog = useCallback(() => {
+    setEmbedUrlInput("");
+    setEmbedTitleInput("");
+    setEmbedDialogMode("create");
+  }, []);
+
+  const openCreateEmbedDialog = useCallback(() => {
+    resetEmbedDialog();
+    setEmbedDialogMode("create");
+    setEmbedDialogOpen(true);
+  }, [resetEmbedDialog]);
+
+  const openEditEmbedDialog = useCallback(() => {
+    if (!currentSlide || currentSlide.engine !== "embed") return;
+    setEmbedDialogMode("edit");
+    setEmbedUrlInput(currentSlide.url);
+    setEmbedTitleInput(currentSlide.title);
+    setEmbedDialogOpen(true);
+  }, [currentSlide]);
+
+  const handleEmbedDialogOpenChange = useCallback((open: boolean) => {
+    setEmbedDialogOpen(open);
+    if (!open) {
+      resetEmbedDialog();
+    }
+  }, [resetEmbedDialog]);
+
+  const handleSubmitEmbed = useCallback((config: ActivityEmbedConfig) => {
+    if (!presentation) return;
+
+    if (embedDialogMode === "edit" && currentSlide?.engine === "embed") {
+      updateSlide(presentationId, presentation.currentSlideIndex, config);
+    } else {
+      addEmbedSlide(presentationId, config);
+    }
+
+    setEmbedDialogOpen(false);
+    resetEmbedDialog();
+  }, [
+    addEmbedSlide,
+    currentSlide,
+    embedDialogMode,
+    presentation,
+    presentationId,
+    resetEmbedDialog,
+    updateSlide,
+  ]);
+
+  const openSlideMcqDialog = useCallback(() => {
+    setSlideMcqDialogOpen(true);
+  }, []);
+
+  const handleLaunchSlideMcq = useCallback(async () => {
+    if (!presentation || !currentSlide?.slideQuestionDraft) return;
+    if (!hasConvex) {
+      toast.error("Set NEXT_PUBLIC_CONVEX_URL to launch activities.");
+      return;
+    }
+    if (!hostToken) {
+      toast.error("Host session is required to launch this question.");
+      return;
+    }
+
+    try {
+      await createHostedQuestion({
+        presentationId,
+        hostToken,
+        questionType: "mcq",
+        prompt: currentSlide.slideQuestionDraft.prompt,
+        options: currentSlide.slideQuestionDraft.options,
+        correctIndex:
+          currentSlide.slideQuestionDraft.correctIndex ?? undefined,
+        clientRequestId: nanoid(),
+      });
+      toast.success("Slide question launched as an activity.");
+    } catch (error) {
+      console.error("Failed to launch slide MCQ", error);
+      toast.error("Could not launch this slide question.");
+    }
+  }, [
+    createHostedQuestion,
+    currentSlide,
+    hasConvex,
+    hostToken,
+    presentation,
+    presentationId,
+  ]);
+
   const handleExport = () => {
     const data = exportPresentation(presentationId);
     if (!data || !presentation) return;
@@ -396,7 +523,17 @@ export default function PresentationEditorPage() {
     try {
       const fileName = `${presentation.name.replace(/[^a-z0-9]/gi, "_")}-slide-${presentation.currentSlideIndex + 1}.png`;
 
-      if (presentation.canvasEngine === "tldraw") {
+      if (currentSlide.engine === "embed") {
+        const embedNode = visibleEmbedRef.current;
+        if (!embedNode) return;
+        const capture = await captureElementAsPng(embedNode);
+        const blob = await fetch(capture.dataUrl).then((response) => response.blob());
+        const rounded = await roundedBlob(blob);
+        downloadBlob(rounded, fileName);
+        return;
+      }
+
+      if (currentSlide.engine === "tldraw") {
         const editor = tldrawEditorRef.current;
         if (!editor) return;
 
@@ -482,8 +619,17 @@ export default function PresentationEditorPage() {
   }, []);
 
   const captureMountedSlidePng = useCallback(
-    async (engine: CanvasEngine, scope: "visible" | "pdf"): Promise<Blob> => {
-      if (engine === "tldraw") {
+    async (slide: SlideData, scope: "visible" | "pdf"): Promise<Blob> => {
+      if (slide.engine === "embed") {
+        const node = scope === "pdf" ? pdfEmbedRef.current : visibleEmbedRef.current;
+        if (!node) {
+          throw new Error("Embed slide is unavailable.");
+        }
+        const capture = await captureElementAsPng(node);
+        return fetch(capture.dataUrl).then((response) => response.blob());
+      }
+
+      if (slide.engine === "tldraw") {
         const editor = scope === "pdf" ? pdfTldrawEditorRef.current : tldrawEditorRef.current;
         if (!editor) {
           throw new Error("Tldraw editor is unavailable.");
@@ -531,22 +677,126 @@ export default function PresentationEditorPage() {
     [createBlankPngBlob],
   );
 
+  const isSlideLikelyBlank = useCallback((slide: SlideData): boolean => {
+    if (slide.engine === "embed") return false;
+    if (slide.engine === "excalidraw") {
+      return slide.elements.length === 0;
+    }
+    return !slide.snapshot;
+  }, []);
+
+  const blobToOpenRouterImageUrl = useCallback(async (blob: Blob): Promise<string> => {
+    return blobToDataUrl(blob);
+  }, [blobToDataUrl]);
+
+  const buildSlideVisionMessages = useCallback((
+    task: SlideVisionTask,
+    imageUrl: string,
+  ): OpenRouterMessage[] => {
+    const wantsMermaid = presentation?.canvasEngine === "excalidraw" &&
+      (task === "solve_slide" || task === "clean_notes");
+    const mermaidAppendix = wantsMermaid
+      ? " Because this lesson uses Excalidraw, append a final ```mermaid``` code block that is valid Mermaid and safe to import into Excalidraw. Use `flowchart TD` unless another Mermaid diagram type is clearly better. Every node must use quoted labels like `A[\"...\"]` or `B{\"...\"}`. Keep all punctuation, equations, parentheses, and explanatory text inside the quoted label text only. Never place raw text after a node id. Never use LaTeX in Mermaid. Use short labels, and use `<br/>` for line breaks inside labels when needed."
+      : "";
+    const systemPromptByTask: Record<SlideVisionTask, string> = {
+      summarize_slide:
+        "You are SlideBoard Assistant in slide-summary mode. Analyze the provided slide image and return a concise teacher-friendly Markdown summary. Include the main concept, key details, and any visible prompts or tasks. Mention uncertainty briefly if text is unclear.",
+      solve_slide:
+        "You are SlideBoard Assistant in slide-solution mode. Analyze the provided slide image and solve or explain the visible problem in clean Markdown. Show a worked solution when appropriate. If the image is partially unclear, note that briefly and give the best-effort explanation." +
+        mermaidAppendix,
+      clean_notes:
+        "You are SlideBoard Assistant in notes-cleanup mode. Analyze the provided slide image and rewrite the visible notes into clear, polished Markdown. Fix noisy phrasing, OCR-like mistakes, duplication, and inconsistent formatting while preserving correctness." +
+        mermaidAppendix,
+    };
+
+    const userPromptByTask: Record<SlideVisionTask, string> = {
+      summarize_slide: "Summarize this slide for a teacher preparing to present it.",
+      solve_slide: "Solve or clearly explain the problem or concept shown on this slide.",
+      clean_notes: "Clean up the notes shown on this slide and turn them into well-structured notes.",
+    };
+
+    const userContent: ChatMessageContentPart[] = [
+      {
+        type: "text",
+        text: userPromptByTask[task],
+      },
+      {
+        type: "image_url",
+        image_url: { url: imageUrl },
+      },
+    ];
+
+    return [
+      {
+        role: "system",
+        content:
+          "You are SlideBoard Assistant for educators. Keep answers concise, practical, and classroom-friendly. Format every response in clean Markdown with short sections and bullet points when useful. For math, use strict LaTeX delimiters only: inline `$...$` and display `$$...$$`.",
+      },
+      {
+        role: "system",
+        content: systemPromptByTask[task],
+      },
+      {
+        role: "user",
+        content: userContent,
+      },
+    ];
+  }, [presentation?.canvasEngine]);
+
+  const captureCurrentSlideForAssistant = useCallback(async (): Promise<{
+    blob: Blob;
+    imageUrl: string;
+  }> => {
+    if (!currentSlide) {
+      throw new Error("No slide is available.");
+    }
+
+    if (currentSlide.engine === "tldraw") {
+      const editor = tldrawEditorRef.current;
+      if (!editor || editor.getCurrentPageShapeIds().size === 0) {
+        throw new Error("This slide is blank.");
+      }
+    }
+
+    if (currentSlide.engine === "excalidraw") {
+      const api = excalidrawApiRef.current;
+      if (!api || api.getSceneElements().length === 0) {
+        throw new Error("This slide is blank.");
+      }
+    }
+
+    const blob = await captureMountedSlidePng(currentSlide, "visible");
+    return {
+      blob,
+      imageUrl: await blobToOpenRouterImageUrl(blob),
+    };
+  }, [blobToOpenRouterImageUrl, captureMountedSlidePng, currentSlide]);
+
+  const runCurrentSlideVisionTask = useCallback(async (task: SlideVisionTask): Promise<string> => {
+    const { imageUrl } = await captureCurrentSlideForAssistant();
+    const messages = buildSlideVisionMessages(task, imageUrl);
+    return sendChatMessage(messages);
+  }, [buildSlideVisionMessages, captureCurrentSlideForAssistant]);
+
   const waitForPdfRenderCanvas = useCallback(
-    async (slideId: string, engine: CanvasEngine, timeoutMs = 6000) => {
+    async (slide: SlideData, timeoutMs = 6000) => {
       const start = Date.now();
       while (Date.now() - start < timeoutMs) {
         if (
-          engine === "tldraw" &&
+          slide.engine === "tldraw" &&
           pdfTldrawEditorRef.current &&
-          pdfTldrawReadySlideIdRef.current === slideId
+          pdfTldrawReadySlideIdRef.current === slide.id
         ) {
           return;
         }
         if (
-          engine === "excalidraw" &&
+          slide.engine === "excalidraw" &&
           pdfExcalidrawApiRef.current &&
-          pdfExcalidrawReadySlideIdRef.current === slideId
+          pdfExcalidrawReadySlideIdRef.current === slide.id
         ) {
+          return;
+        }
+        if (slide.engine === "embed" && pdfEmbedRef.current) {
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 40));
@@ -556,13 +806,100 @@ export default function PresentationEditorPage() {
     [],
   );
 
+  const generateLessonDocs = useCallback(async (onChunk: (chunk: string) => void): Promise<string> => {
+    if (!presentation) {
+      throw new Error("Presentation not found.");
+    }
+
+    const extractionBatches: string[] = [];
+    const batchSize = 4;
+    const candidateSlides = presentation.slides
+      .map((slide, index) => ({ slide, index }))
+      .filter(({ slide }) => !isSlideLikelyBlank(slide));
+
+    if (candidateSlides.length === 0) {
+      throw new Error("There are no non-empty slides to analyze.");
+    }
+
+    try {
+      for (let start = 0; start < candidateSlides.length; start += batchSize) {
+        const batch = candidateSlides.slice(start, start + batchSize);
+        const batchMessages: OpenRouterMessage[] = [
+          {
+            role: "system",
+            content:
+              "You are SlideBoard Assistant extracting lesson notes from slide images. For each slide, produce clean Markdown notes with: title/topic, key ideas, visible examples/problems, important vocabulary or formulas, and any uncertainty caused by unclear text.",
+          },
+        ];
+
+        const batchContent: ChatMessageContentPart[] = [
+          {
+            type: "text",
+            text:
+              "Extract normalized notes from these slides. Return Markdown grouped by slide number. Do not write the final handout yet.",
+          },
+        ];
+
+        for (const { slide, index } of batch) {
+          setPdfRenderSlideIndex(index);
+          await waitForPdfRenderCanvas(slide);
+          const blob = await captureMountedSlidePng(slide, "pdf");
+          const imageUrl = await blobToOpenRouterImageUrl(blob);
+          batchContent.push({
+            type: "text",
+            text: `Slide ${index + 1}`,
+          });
+          batchContent.push({
+            type: "image_url",
+            image_url: { url: imageUrl },
+          });
+        }
+
+        batchMessages.push({
+          role: "user",
+          content: batchContent,
+        });
+
+        const batchResult = await sendChatMessage(batchMessages);
+        extractionBatches.push(batchResult.trim());
+      }
+    } finally {
+      setPdfRenderSlideIndex(null);
+    }
+
+    const synthesisMessages: OpenRouterMessage[] = [
+      {
+        role: "system",
+        content:
+          "You are SlideBoard Assistant in lesson-document mode. Turn extracted slide notes into polished Markdown. Preserve correctness, fix messy wording, remove duplication, and improve structure.",
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "Create two polished Markdown documents from these extracted slide notes.\n\nDocument 1: Teacher lesson notes with lesson objective, cleaned explanations, worked examples, teaching flow, misconceptions, and checks for understanding.\n\nDocument 2: Student handout with simplified explanations, cleaned examples, and practice-ready structure. Remove teacher-only commentary.\n\nReturn both documents in one response with top-level headings `# Teacher Lesson Notes` and `# Student Handout`.\n\nExtracted notes:\n\n" +
+              extractionBatches.join("\n\n---\n\n"),
+          },
+        ],
+      },
+    ];
+
+    return sendChatMessage(synthesisMessages, onChunk);
+  }, [
+    blobToOpenRouterImageUrl,
+    captureMountedSlidePng,
+    isSlideLikelyBlank,
+    presentation,
+    waitForPdfRenderCanvas,
+  ]);
+
   const handleExportDeckPdf = useCallback(async () => {
     if (!presentation || isExportingDeckPdf) return;
 
     setIsExportingDeckPdf(true);
     setPdfDialogOpen(false);
-
-    const engine = presentation.canvasEngine;
 
     try {
       const slideBlobs: Blob[] = [];
@@ -572,8 +909,8 @@ export default function PresentationEditorPage() {
         if (!targetSlide) continue;
 
         setPdfRenderSlideIndex(i);
-        await waitForPdfRenderCanvas(targetSlide.id, engine);
-        const blob = await captureMountedSlidePng(engine, "pdf");
+        await waitForPdfRenderCanvas(targetSlide);
+        const blob = await captureMountedSlidePng(targetSlide, "pdf");
         slideBlobs.push(blob);
       }
 
@@ -656,6 +993,435 @@ export default function PresentationEditorPage() {
     },
     [],
   );
+
+  const waitForNextPaint = useCallback(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }, []);
+
+  const upsertSlideMcqImage = useCallback(
+    async (draft: SlideMcqDraft) => {
+      if (!presentation || !currentSlide || currentSlide.engine === "embed") {
+        throw new Error("Slide questions can only be added to whiteboard slides.");
+      }
+
+      setMcqCaptureDraft(draft);
+      await waitForNextPaint();
+
+      const sourceElement = mcqCaptureRef.current;
+      if (!sourceElement) {
+        throw new Error("Question preview is unavailable.");
+      }
+
+      const capture = await captureElementAsPng(sourceElement);
+      const { dataUrl, width, height } = capture;
+
+      if (presentation.canvasEngine === "tldraw") {
+        const editor = tldrawEditorRef.current;
+        if (!editor) {
+          throw new Error("Tldraw editor is unavailable.");
+        }
+
+        const existingAsset = currentSlide.slideQuestionAsset;
+        if (existingAsset?.engine === "tldraw" && existingAsset.shapeId) {
+          editor.deleteShapes([existingAsset.shapeId as never]);
+        }
+
+        const viewport = editor.getViewportPageBounds();
+        const maxWidth = viewport.w * 0.4;
+        const maxHeight = viewport.h * 0.46;
+        const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+        const renderWidth = Math.max(1, Math.round(width * scale));
+        const renderHeight = Math.max(1, Math.round(height * scale));
+        const x = viewport.x + viewport.w - renderWidth - 40;
+        const y = viewport.y + viewport.h - renderHeight - 40;
+
+        const assetId = `asset:${nanoid()}`;
+        const shapeId = `shape:${nanoid()}`;
+
+        editor.createAssets([
+          {
+            id: assetId,
+            typeName: "asset",
+            type: "image",
+            props: {
+              name: `slide-mcq-${currentSlide.id}.png`,
+              src: dataUrl,
+              w: width,
+              h: height,
+              mimeType: "image/png",
+              isAnimated: false,
+            },
+            meta: {},
+          } as never,
+        ]);
+
+        editor.createShapes([
+          {
+            id: shapeId,
+            type: "image",
+            parentId: editor.getCurrentPageId(),
+            x,
+            y,
+            props: {
+              w: renderWidth,
+              h: renderHeight,
+              assetId,
+              playing: true,
+              url: "",
+              crop: null,
+              flipX: false,
+              flipY: false,
+              altText: "Slide question",
+            },
+          } as never,
+        ]);
+
+        const nextSnapshot = getSnapshot(editor.store);
+        updateSlide(presentationId, presentation.currentSlideIndex, {
+          snapshot: nextSnapshot.document,
+          slideQuestionDraft: draft,
+          slideQuestionAsset: {
+            engine: "tldraw",
+            shapeId,
+            assetId,
+          },
+        });
+
+        return;
+      }
+
+      const api = excalidrawApiRef.current;
+      if (!api) {
+        throw new Error("Excalidraw API is unavailable.");
+      }
+
+      const existingAsset = currentSlide.slideQuestionAsset;
+      const filteredElements =
+        existingAsset?.engine === "excalidraw" && existingAsset.elementId
+          ? api.getSceneElements().filter((element) => element.id !== existingAsset.elementId)
+          : api.getSceneElements();
+      const { elements: normalizedExistingElements } =
+        sanitizeExcalidrawElementIndices(filteredElements);
+
+      const currentAppState = api.getAppState();
+      const zoomValue =
+        typeof (currentAppState.zoom as { value?: number } | undefined)?.value ===
+          "number" &&
+        (currentAppState.zoom as { value: number }).value > 0
+          ? (currentAppState.zoom as { value: number }).value
+          : 1;
+      const viewportWidth =
+        typeof currentAppState.width === "number" ? currentAppState.width : 1280;
+      const viewportHeight =
+        typeof currentAppState.height === "number" ? currentAppState.height : 720;
+      const scrollX =
+        typeof currentAppState.scrollX === "number" ? currentAppState.scrollX : 0;
+      const scrollY =
+        typeof currentAppState.scrollY === "number" ? currentAppState.scrollY : 0;
+
+      const visibleWidth = viewportWidth / zoomValue;
+      const visibleHeight = viewportHeight / zoomValue;
+      const maxWidth = visibleWidth * 0.4;
+      const maxHeight = visibleHeight * 0.46;
+      const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+      const renderWidth = Math.max(1, Math.round(width * scale));
+      const renderHeight = Math.max(1, Math.round(height * scale));
+      const x = Math.round(-scrollX + visibleWidth - renderWidth - 40);
+      const y = Math.round(-scrollY + visibleHeight - renderHeight - 40);
+
+      const fileId = nanoid();
+      const elementId = nanoid();
+      const now = Date.now();
+      const fileRecord = {
+        id: fileId,
+        dataURL: dataUrl,
+        mimeType: "image/png",
+        created: now,
+      };
+
+      const imageElement: ExcalidrawElement = {
+        type: "image",
+        version: 1,
+        versionNonce: Math.floor(Math.random() * 2147483647),
+        index: getNextValidExcalidrawIndex(normalizedExistingElements),
+        isDeleted: false,
+        id: elementId,
+        fillStyle: "solid",
+        strokeWidth: 1,
+        strokeStyle: "solid",
+        roughness: 0,
+        opacity: 100,
+        angle: 0,
+        x,
+        y,
+        strokeColor: "transparent",
+        backgroundColor: "transparent",
+        width: renderWidth,
+        height: renderHeight,
+        seed: Math.floor(Math.random() * 2147483647),
+        groupIds: [],
+        frameId: null,
+        boundElements: null,
+        updated: now,
+        link: null,
+        locked: false,
+        roundness: null,
+        fileId,
+        status: "saved",
+        scale: [1, 1],
+        crop: null,
+      };
+
+      const nextElements = [...normalizedExistingElements, imageElement];
+      api.addFiles?.([fileRecord]);
+      api.updateScene?.({
+        elements: nextElements,
+        commitToHistory: true,
+      });
+
+      const existingFiles = api.getFiles() as Record<string, unknown>;
+      const nextFiles = { ...existingFiles } as BinaryFiles;
+      if (existingAsset?.engine === "excalidraw" && existingAsset.fileId) {
+        delete nextFiles[existingAsset.fileId];
+      }
+      nextFiles[fileId] = fileRecord;
+
+      updateSlide(presentationId, presentation.currentSlideIndex, {
+        elements: nextElements,
+        appState: {
+          scrollX:
+            typeof currentAppState.scrollX === "number"
+              ? currentAppState.scrollX
+              : 0,
+          scrollY:
+            typeof currentAppState.scrollY === "number"
+              ? currentAppState.scrollY
+              : 0,
+          zoom: currentAppState.zoom,
+          viewBackgroundColor:
+            typeof currentAppState.viewBackgroundColor === "string"
+              ? currentAppState.viewBackgroundColor
+              : "#ffffff",
+          currentItemStrokeWidth:
+            typeof currentAppState.currentItemStrokeWidth === "number"
+              ? currentAppState.currentItemStrokeWidth
+              : 1,
+        },
+        files: nextFiles,
+        slideQuestionDraft: draft,
+        slideQuestionAsset: {
+          engine: "excalidraw",
+          elementId,
+          fileId,
+        },
+      });
+    },
+    [currentSlide, presentation, presentationId, updateSlide, waitForNextPaint],
+  );
+
+  const insertAssistantMermaid = useCallback(async (mermaidCode: string) => {
+    if (!presentation || !currentSlide || currentSlide.engine !== "excalidraw") {
+      throw new Error("Mermaid insertion is only available on Excalidraw slides.");
+    }
+
+    const api = excalidrawApiRef.current;
+    if (!api) {
+      throw new Error("Excalidraw is unavailable.");
+    }
+
+    const [{ parseMermaidToExcalidraw }, { convertToExcalidrawElements, restoreElements }] = await Promise.all([
+      import("@excalidraw/mermaid-to-excalidraw"),
+      import("@excalidraw/excalidraw"),
+    ]);
+
+    const parsed = await parseMermaidToExcalidraw(mermaidCode);
+    const importedElements = convertToExcalidrawElements(parsed.elements, {
+      regenerateIds: true,
+    }) as ExcalidrawElement[];
+
+    if (importedElements.length === 0) {
+      throw new Error("No Mermaid diagram could be generated.");
+    }
+
+    const numericBounds = importedElements.reduce<{
+      minX: number;
+      minY: number;
+      maxX: number;
+      maxY: number;
+    }>((acc, element) => {
+        const x = typeof element.x === "number" ? element.x : 0;
+        const y = typeof element.y === "number" ? element.y : 0;
+        const width = typeof element.width === "number" ? element.width : 0;
+        const height = typeof element.height === "number" ? element.height : 0;
+        return {
+          minX: Math.min(acc.minX, x),
+          minY: Math.min(acc.minY, y),
+          maxX: Math.max(acc.maxX, x + width),
+          maxY: Math.max(acc.maxY, y + height),
+        };
+      },
+      {
+        minX: Infinity,
+        minY: Infinity,
+        maxX: -Infinity,
+        maxY: -Infinity,
+      },
+    );
+
+    const currentAppState = api.getAppState();
+    const zoomValue =
+      typeof (currentAppState.zoom as { value?: number } | undefined)?.value === "number" &&
+      (currentAppState.zoom as { value: number }).value > 0
+        ? (currentAppState.zoom as { value: number }).value
+        : 1;
+    const viewportWidth =
+      typeof currentAppState.width === "number" ? currentAppState.width : 1280;
+    const viewportHeight =
+      typeof currentAppState.height === "number" ? currentAppState.height : 720;
+    const scrollX =
+      typeof currentAppState.scrollX === "number" ? currentAppState.scrollX : 0;
+    const scrollY =
+      typeof currentAppState.scrollY === "number" ? currentAppState.scrollY : 0;
+
+    const visibleWidth = viewportWidth / zoomValue;
+    const visibleHeight = viewportHeight / zoomValue;
+    const diagramWidth = numericBounds.maxX - numericBounds.minX;
+    const diagramHeight = numericBounds.maxY - numericBounds.minY;
+    const targetCenterX = -scrollX + visibleWidth / 2;
+    const targetCenterY = -scrollY + visibleHeight / 2;
+    const currentCenterX = numericBounds.minX + diagramWidth / 2;
+    const currentCenterY = numericBounds.minY + diagramHeight / 2;
+    const offsetX = targetCenterX - currentCenterX;
+    const offsetY = targetCenterY - currentCenterY;
+
+    const shiftedElements = importedElements.map((element) => ({
+      ...element,
+      x: typeof element.x === "number" ? element.x + offsetX : element.x,
+      y: typeof element.y === "number" ? element.y + offsetY : element.y,
+    }));
+
+    const existingElements = api.getSceneElements();
+    const normalizedImportedElements = restoreElements(
+      shiftedElements as never,
+      existingElements as never,
+      {
+        refreshDimensions: true,
+        repairBindings: true,
+      },
+    ) as ExcalidrawElement[];
+    const parsedFiles = (parsed.files ?? {}) as BinaryFiles;
+    const nextFiles = {
+      ...(api.getFiles() as BinaryFiles),
+      ...parsedFiles,
+    };
+    const { elements: normalizedElements } = sanitizeExcalidrawElementIndices([
+      ...existingElements,
+      ...normalizedImportedElements,
+    ]);
+
+    const fileRecords = Object.values(
+      parsedFiles as Record<string, { id: string; dataURL: string; mimeType: string; created: number }>,
+    );
+    if (fileRecords.length > 0) {
+      api.addFiles?.(fileRecords);
+    }
+    api.updateScene?.({
+      elements: normalizedElements,
+      files: nextFiles,
+      commitToHistory: true,
+    });
+
+    updateSlide(presentationId, presentation.currentSlideIndex, {
+      elements: normalizedElements,
+      appState: currentAppState,
+      files: nextFiles,
+    });
+  }, [currentSlide, presentation, presentationId, updateSlide]);
+
+  const handleSaveSlideMcq = useCallback(async (draft: SlideMcqDraft) => {
+    if (!presentation || !currentSlide) return;
+    if (currentSlide.engine === "embed") {
+      toast.error("Slide questions can only be added to whiteboard slides.");
+      return;
+    }
+
+    try {
+      await upsertSlideMcqImage(draft);
+      setSlideMcqDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to insert slide MCQ", error);
+      toast.error("Could not place this question on the slide.");
+    } finally {
+      setMcqCaptureDraft(null);
+    }
+  }, [currentSlide, presentation, upsertSlideMcqImage]);
+
+  const handleClearSlideMcq = useCallback(() => {
+    if (!presentation || !currentSlide) return;
+    if (currentSlide.engine === "tldraw") {
+      const editor = tldrawEditorRef.current;
+      const shapeId =
+        currentSlide.slideQuestionAsset?.engine === "tldraw"
+          ? currentSlide.slideQuestionAsset.shapeId
+          : undefined;
+
+      if (editor && shapeId) {
+        editor.deleteShapes([shapeId as never]);
+        const nextSnapshot = getSnapshot(editor.store);
+        updateSlide(presentationId, presentation.currentSlideIndex, {
+          snapshot: nextSnapshot.document,
+          slideQuestionDraft: undefined,
+          slideQuestionAsset: undefined,
+        });
+      } else {
+        updateSlide(presentationId, presentation.currentSlideIndex, {
+          slideQuestionDraft: undefined,
+          slideQuestionAsset: undefined,
+        });
+      }
+    } else if (currentSlide.engine === "excalidraw") {
+      const api = excalidrawApiRef.current;
+      const asset =
+        currentSlide.slideQuestionAsset?.engine === "excalidraw"
+          ? currentSlide.slideQuestionAsset
+          : undefined;
+
+      if (api && asset?.elementId) {
+        const nextElements = api
+          .getSceneElements()
+          .filter((element) => element.id !== asset.elementId);
+        const nextFiles = { ...(api.getFiles() as BinaryFiles) };
+        if (asset.fileId) {
+          delete nextFiles[asset.fileId];
+        }
+        api.updateScene?.({
+          elements: nextElements,
+          commitToHistory: true,
+        });
+        updateSlide(presentationId, presentation.currentSlideIndex, {
+          elements: nextElements,
+          appState: api.getAppState(),
+          files: nextFiles,
+          slideQuestionDraft: undefined,
+          slideQuestionAsset: undefined,
+        });
+      } else {
+        updateSlide(presentationId, presentation.currentSlideIndex, {
+          slideQuestionDraft: undefined,
+          slideQuestionAsset: undefined,
+        });
+      }
+    } else {
+      updateSlide(presentationId, presentation.currentSlideIndex, {
+        slideQuestionDraft: undefined,
+        slideQuestionAsset: undefined,
+      });
+    }
+
+    setMcqCaptureDraft(null);
+    setSlideMcqDialogOpen(false);
+  }, [currentSlide, presentation, presentationId, updateSlide]);
 
   const insertAssistantImage = useCallback(
     async ({ dataUrl, width, height, target, messageId }: AssistantInsertPayload) => {
@@ -997,29 +1763,6 @@ export default function PresentationEditorPage() {
 
     const listenerOptions: AddEventListenerOptions = { passive: false, capture: true };
 
-    const handleWheel = (event: WheelEvent) => {
-      if (!(event.target instanceof Node)) return;
-      if (!canvasRegion.contains(event.target)) return;
-
-      if (event.ctrlKey) return;
-
-      const horizontalDominant = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-      if (wheelDebugCountRef.current < 20) {
-        console.log("[editor-wheel]", {
-          deltaX: event.deltaX,
-          deltaY: event.deltaY,
-          cancelable: event.cancelable,
-          horizontalDominant,
-        });
-        wheelDebugCountRef.current += 1;
-      }
-
-      if (horizontalDominant && event.cancelable) {
-        console.log("[editor-wheel] preventDefault horizontal swipe");
-        event.preventDefault();
-      }
-    };
-
     const handleGesture = (event: Event) => {
       if (!(event.target instanceof Node)) return;
       if (!canvasRegion.contains(event.target)) return;
@@ -1037,7 +1780,6 @@ export default function PresentationEditorPage() {
     document.documentElement.classList.add("editor-gesture-lock");
     document.body.classList.add("editor-gesture-lock");
     history.pushState({ slideboardEditorGuard: true }, "", location.href);
-    window.addEventListener("wheel", handleWheel, listenerOptions);
     window.addEventListener("gesturestart", handleGesture, listenerOptions);
     window.addEventListener("gesturechange", handleGesture, listenerOptions);
     window.addEventListener("popstate", handlePopState);
@@ -1045,7 +1787,6 @@ export default function PresentationEditorPage() {
     return () => {
       document.documentElement.classList.remove("editor-gesture-lock");
       document.body.classList.remove("editor-gesture-lock");
-      window.removeEventListener("wheel", handleWheel, true);
       window.removeEventListener("gesturestart", handleGesture, true);
       window.removeEventListener("gesturechange", handleGesture, true);
       window.removeEventListener("popstate", handlePopState);
@@ -1111,12 +1852,87 @@ export default function PresentationEditorPage() {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={handleExport}>
-                <Download className="h-4 w-4" />
+              <Button
+                variant={currentSlide?.engine === "embed" ? "outline" : "ghost"}
+                size="icon"
+                onClick={
+                  currentSlide?.engine === "embed"
+                    ? openEditEmbedDialog
+                    : openCreateEmbedDialog
+                }
+              >
+                <Frame className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Export deck</TooltipContent>
+            <TooltipContent>
+              {currentSlide?.engine === "embed" ? "Edit embed" : "Add embed"}
+            </TooltipContent>
           </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={currentSlide?.slideQuestionDraft ? "outline" : "ghost"}
+                size="icon"
+                disabled={currentSlide?.engine === "embed"}
+                onClick={openSlideMcqDialog}
+              >
+                <ClipboardList className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {currentSlide?.engine === "embed"
+                ? "Slide MCQ is unavailable on embeds"
+                : currentSlide?.slideQuestionDraft
+                  ? "Edit slide MCQ"
+                  : "Add slide MCQ"}
+            </TooltipContent>
+          </Tooltip>
+
+          {currentSlide?.slideQuestionDraft ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={handleLaunchSlideMcq}
+              disabled={!hasConvex || !hostToken}
+            >
+              <Rocket className="h-3.5 w-3.5" />
+              Add as activity
+            </Button>
+          ) : null}
+
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon">
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Export</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Export</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={handleDownloadSlideImage}>
+                <ImageDown className="h-4 w-4" />
+                As picture of slide
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setPdfDialogOpen(true)}
+                disabled={isExportingDeckPdf}
+              >
+                <FileDown className="h-4 w-4" />
+                {isExportingDeckPdf ? "Exporting PDF..." : "As PDF"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleExport}>
+                <Download className="h-4 w-4" />
+                As JSON export
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1134,31 +1950,6 @@ export default function PresentationEditorPage() {
                 : calculatorMode === "sheet"
                   ? "Show calculator (sheet)"
                   : "Show calculator"}
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={handleDownloadSlideImage}>
-                <ImageDown className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Download slide image</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setPdfDialogOpen(true)}
-                disabled={isExportingDeckPdf}
-              >
-                <FileDown className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {isExportingDeckPdf ? "Exporting PDF..." : "Export deck as PDF"}
             </TooltipContent>
           </Tooltip>
 
@@ -1242,7 +2033,13 @@ export default function PresentationEditorPage() {
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <div ref={canvasRegionRef} className="relative flex-1 overscroll-x-none">
               {currentSlide && (
-                presentation.canvasEngine === "excalidraw" ? (
+                currentSlide.engine === "embed" ? (
+                  <ActivityEmbedSlide
+                    ref={visibleEmbedRef}
+                    slide={currentSlide}
+                    className="absolute inset-0"
+                  />
+                ) : presentation.canvasEngine === "excalidraw" ? (
                   <ExcalidrawWrapper
                     key={`${currentSlide.id}:${currentSlide.sceneVersion}`}
                     initialElements={currentSlide.engine === "excalidraw" ? currentSlide.elements : []}
@@ -1283,6 +2080,7 @@ export default function PresentationEditorPage() {
                   />
                 ) : null
               )}
+
             </div>
 
             <SlideControls
@@ -1303,6 +2101,15 @@ export default function PresentationEditorPage() {
             <div className="w-[360px] shrink-0 border-l border-border bg-background">
               <ChatPanel
                 className="h-full"
+                onSummarizeSlide={() => runCurrentSlideVisionTask("summarize_slide")}
+                onSolveSlide={() => runCurrentSlideVisionTask("solve_slide")}
+                onCleanSlideNotes={() => runCurrentSlideVisionTask("clean_notes")}
+                onGenerateLessonDocs={generateLessonDocs}
+                onInsertAsMermaid={
+                  presentation.canvasEngine === "excalidraw"
+                    ? insertAssistantMermaid
+                    : undefined
+                }
                 onInsertAsImage={insertAssistantImage}
               />
             </div>
@@ -1332,7 +2139,14 @@ export default function PresentationEditorPage() {
           aria-hidden
           className="pointer-events-none fixed -left-[20000px] top-0 h-[1080px] w-[1920px] overflow-hidden opacity-0"
         >
-          {presentation.canvasEngine === "excalidraw" ? (
+          {pdfRenderSlide.engine === "embed" ? (
+            <ActivityEmbedSlide
+              ref={pdfEmbedRef}
+              slide={pdfRenderSlide}
+              previewOnly={true}
+              className="h-full w-full bg-white"
+            />
+          ) : presentation.canvasEngine === "excalidraw" ? (
             <ExcalidrawWrapper
               key={`pdf:${pdfRenderSlide.id}:${pdfRenderSlide.sceneVersion}`}
               initialElements={pdfRenderSlide.engine === "excalidraw" ? pdfRenderSlide.elements : []}
@@ -1358,6 +2172,34 @@ export default function PresentationEditorPage() {
           )}
         </div>
       )}
+
+      {mcqCaptureDraft ? (
+        <div className="pointer-events-none fixed -left-[20000px] top-0 z-[-1] opacity-0">
+          <div ref={mcqCaptureRef} className="w-[520px] bg-background p-6">
+            <SlideMcqCard draft={mcqCaptureDraft} className="max-w-none" />
+          </div>
+        </div>
+      ) : null}
+
+      <ActivityEmbedDialog
+        open={embedDialogOpen}
+        onOpenChange={handleEmbedDialogOpenChange}
+        url={embedUrlInput}
+        title={embedTitleInput}
+        onUrlChange={setEmbedUrlInput}
+        onTitleChange={setEmbedTitleInput}
+        onSubmit={handleSubmitEmbed}
+        submitLabel={embedDialogMode === "edit" ? "Save embed" : "Add embed slide"}
+      />
+
+      <SlideMcqDialog
+        key={`${currentSlide?.id ?? "none"}:${JSON.stringify(currentSlide?.slideQuestionDraft ?? null)}`}
+        open={slideMcqDialogOpen}
+        onOpenChange={setSlideMcqDialogOpen}
+        initialDraft={currentSlide?.slideQuestionDraft}
+        onSave={handleSaveSlideMcq}
+        onClear={currentSlide?.slideQuestionDraft ? handleClearSlideMcq : undefined}
+      />
 
       <Dialog
         open={pdfDialogOpen}

@@ -1,8 +1,26 @@
 const OPENROUTER_PROXY_URL = "/api/openrouter/chat";
 
+export interface ChatMessageContentTextPart {
+  type: "text";
+  text: string;
+}
+
+export interface ChatMessageContentImagePart {
+  type: "image_url";
+  image_url: {
+    url: string;
+  };
+}
+
+export type ChatMessageContentPart =
+  | ChatMessageContentTextPart
+  | ChatMessageContentImagePart;
+
+export type ChatMessageContent = string | ChatMessageContentPart[];
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
-  content: string;
+  content: ChatMessageContent;
 }
 
 export interface OpenRouterResponse {
@@ -33,7 +51,7 @@ export async function sendChatMessage(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+    throw new Error(`Assistant API error: ${response.status} - ${errorText}`);
   }
 
   // Handle streaming response

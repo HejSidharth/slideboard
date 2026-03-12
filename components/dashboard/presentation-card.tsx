@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { formatDistanceToNow } from "@/lib/date-utils";
 import { getSlidePreview } from "@/lib/slide-previews";
+import { getProviderLabel } from "@/lib/activity-embeds";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -68,6 +69,7 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
   };
 
   const firstSlideId = presentation.slides[0]?.id;
+  const firstSlide = presentation.slides[0];
 
   useEffect(() => {
     if (!firstSlideId) return;
@@ -144,7 +146,21 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
       >
         <CardContent className="p-0">
           <div className="relative aspect-video border-b border-border bg-secondary/30">
-            {previewUrl ? (
+            {firstSlide?.engine === "embed" ? (
+              <div className="flex h-full flex-col justify-between bg-linear-to-br from-secondary to-background p-4">
+                <span className="w-fit rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  {getProviderLabel(firstSlide.provider)}
+                </span>
+                <div>
+                  <p className="line-clamp-2 text-sm font-semibold text-foreground">
+                    {firstSlide.title}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Embedded content slide
+                  </p>
+                </div>
+              </div>
+            ) : previewUrl ? (
               <Image
                 src={previewUrl}
                 alt={`${presentation.name} preview`}

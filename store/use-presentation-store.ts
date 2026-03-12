@@ -7,12 +7,17 @@ import type {
   AppState,
   BinaryFiles,
   CanvasEngine,
+  EmbedProvider,
+  EmbedRenderMode,
   ExcalidrawElement,
   ExtractedProblem,
   Folder,
   Presentation,
   PresentationStore,
   SlideData,
+  SlideMcqDraft,
+  SlideMcqCanvasAsset,
+  EmbedSlideData,
   TldrawSlideData,
   ExcalidrawSlideData,
 } from "@/types";
@@ -76,6 +81,17 @@ function persistSlideToCache(
     filesJson: slide.engine === "excalidraw"
       ? JSON.stringify(slide.files)
       : null,
+    slideQuestionDraftJson: slide.slideQuestionDraft
+      ? JSON.stringify(slide.slideQuestionDraft)
+      : null,
+    slideQuestionAssetJson: slide.slideQuestionAsset
+      ? JSON.stringify(slide.slideQuestionAsset)
+      : null,
+    provider: slide.engine === "embed" ? slide.provider : undefined,
+    url: slide.engine === "embed" ? slide.url : undefined,
+    embedUrl: slide.engine === "embed" ? slide.embedUrl : undefined,
+    title: slide.engine === "embed" ? slide.title : undefined,
+    renderMode: slide.engine === "embed" ? slide.renderMode : undefined,
     createdAt: slide.createdAt,
     updatedAt: slide.updatedAt,
     syncedAt: null,
@@ -130,6 +146,25 @@ const createEmptySlide = (engine: CanvasEngine): SlideData => {
     updatedAt: Date.now(),
   };
 };
+
+const createEmbedSlide = (input: {
+  provider: EmbedProvider;
+  url: string;
+  embedUrl: string | null;
+  title: string;
+  renderMode: EmbedRenderMode;
+}): EmbedSlideData => ({
+  id: nanoid(),
+  engine: "embed",
+  sceneVersion: 0,
+  provider: input.provider,
+  url: input.url,
+  embedUrl: input.embedUrl,
+  title: input.title,
+  renderMode: input.renderMode,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+});
 
 /**
  * Canvas dimensions for positioning imported images.
@@ -298,9 +333,88 @@ function isExcalidrawElements(value: unknown): value is readonly ExcalidrawEleme
   return Array.isArray(value);
 }
 
+function normalizeSlideQuestionDraft(value: unknown): SlideMcqDraft | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const draft = value as Partial<SlideMcqDraft>;
+  if (typeof draft.prompt !== "string" || !Array.isArray(draft.options)) {
+    return undefined;
+  }
+
+  const options = draft.options
+    .filter((option): option is string => typeof option === "string")
+    .map((option) => option.trim())
+    .filter(Boolean);
+
+  if (options.length < 2) return undefined;
+
+  return {
+    prompt: draft.prompt,
+    options,
+    correctIndex:
+      typeof draft.correctIndex === "number" &&
+      draft.correctIndex >= 0 &&
+      draft.correctIndex < options.length
+        ? draft.correctIndex
+        : null,
+  };
+}
+
+function normalizeSlideQuestionAsset(value: unknown): SlideMcqCanvasAsset | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const asset = value as Partial<SlideMcqCanvasAsset>;
+  if (asset.engine !== "tldraw" && asset.engine !== "excalidraw") {
+    return undefined;
+  }
+
+  return {
+    engine: asset.engine,
+    shapeId: typeof asset.shapeId === "string" ? asset.shapeId : undefined,
+    assetId: typeof asset.assetId === "string" ? asset.assetId : undefined,
+    elementId: typeof asset.elementId === "string" ? asset.elementId : undefined,
+    fileId: typeof asset.fileId === "string" ? asset.fileId : undefined,
+  };
+}
+
 function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): SlideData {
   const timestamp = Date.now();
   const slide = rawSlide as Partial<SlideData> | undefined;
+  const slideQuestionDraft = normalizeSlideQuestionDraft(
+    (slide as { slideQuestionDraft?: unknown } | undefined)?.slideQuestionDraft,
+  );
+  const slideQuestionAsset = normalizeSlideQuestionAsset(
+    (slide as { slideQuestionAsset?: unknown } | undefined)?.slideQuestionAsset,
+  );
+
+  if (slide?.engine === "embed") {
+    return {
+      id: typeof slide.id === "string" ? slide.id : nanoid(),
+      engine: "embed",
+      sceneVersion:
+        typeof slide.sceneVersion === "number"
+          ? slide.sceneVersion
+          : 0,
+      provider:
+        slide.provider === "generic" ||
+        slide.provider === "kahoot" ||
+        slide.provider === "gimkit" ||
+        slide.provider === "quizizz" ||
+        slide.provider === "youtube"
+          ? slide.provider
+          : "generic",
+      url: typeof slide.url === "string" ? slide.url : "",
+      embedUrl: typeof slide.embedUrl === "string" ? slide.embedUrl : null,
+      title: typeof slide.title === "string" && slide.title.trim()
+        ? slide.title
+        : "Embedded activity",
+      renderMode: slide.renderMode === "embed" ? "embed" : "launch-only",
+      slideQuestionDraft,
+      slideQuestionAsset,
+      createdAt:
+        typeof slide.createdAt === "number" ? slide.createdAt : timestamp,
+      updatedAt:
+        typeof slide.updatedAt === "number" ? slide.updatedAt : timestamp,
+    };
+  }
 
   const hasExcalidrawData = !!slide && (slide.engine === "excalidraw" || "elements" in slide);
   const engine: CanvasEngine = hasExcalidrawData ? "excalidraw" : fallbackEngine;
@@ -342,6 +456,8 @@ function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): Sl
         typeof (slide as { problemBaselineUpdatedAt?: unknown })?.problemBaselineUpdatedAt === "number"
           ? ((slide as { problemBaselineUpdatedAt: number }).problemBaselineUpdatedAt)
           : undefined,
+      slideQuestionDraft,
+      slideQuestionAsset,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -364,6 +480,8 @@ function normalizeSlideData(rawSlide: unknown, fallbackEngine: CanvasEngine): Sl
       typeof (slide as { problemBaselineUpdatedAt?: unknown })?.problemBaselineUpdatedAt === "number"
         ? ((slide as { problemBaselineUpdatedAt: number }).problemBaselineUpdatedAt)
         : undefined,
+    slideQuestionDraft,
+    slideQuestionAsset,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -551,6 +669,36 @@ export const usePresentationStore = create<PresentationStore>()(
         }));
       },
 
+      addEmbedSlide: (presentationId, input) => {
+        set((state) => ({
+          presentations: state.presentations.map((p) => {
+            if (p.id !== presentationId) return p;
+
+            const newSlide = createEmbedSlide(input);
+            const newSlides = [
+              ...p.slides.slice(0, p.currentSlideIndex + 1),
+              newSlide,
+              ...p.slides.slice(p.currentSlideIndex + 1),
+            ];
+            const insertedIndex = p.currentSlideIndex + 1;
+            persistSlideToCache(newSlide, p.id, insertedIndex);
+            newSlides.forEach((slide, index) => {
+              if (index > insertedIndex) {
+                persistSlideToCache(slide, p.id, index);
+              }
+            });
+            const updated = {
+              ...p,
+              slides: newSlides,
+              currentSlideIndex: insertedIndex,
+              updatedAt: Date.now(),
+            };
+            persistMetaToCache(updated);
+            return updated;
+          }),
+        }));
+      },
+
       deleteSlide: (presentationId: string, slideIndex: number) => {
         let deletedSlideId: string | null = null;
         set((state) => ({
@@ -676,13 +824,47 @@ export const usePresentationStore = create<PresentationStore>()(
                   ? {
                       ...s,
                       snapshot: "snapshot" in data ? (data as Partial<TldrawSlideData>).snapshot ?? null : s.snapshot,
+                      slideQuestionDraft:
+                        "slideQuestionDraft" in data
+                          ? (data as Partial<SlideData>).slideQuestionDraft
+                          : s.slideQuestionDraft,
+                      slideQuestionAsset:
+                        "slideQuestionAsset" in data
+                          ? (data as Partial<SlideData>).slideQuestionAsset
+                          : s.slideQuestionAsset,
                       updatedAt: Date.now(),
                     }
-                  : {
+                  : s.engine === "excalidraw"
+                  ? {
                       ...s,
                       elements: "elements" in data ? (data as Partial<ExcalidrawSlideData>).elements ?? [] : s.elements,
                       appState: "appState" in data ? (data as Partial<ExcalidrawSlideData>).appState ?? {} : s.appState,
                       files: "files" in data ? (data as Partial<ExcalidrawSlideData>).files ?? {} : s.files,
+                      slideQuestionDraft:
+                        "slideQuestionDraft" in data
+                          ? (data as Partial<SlideData>).slideQuestionDraft
+                          : s.slideQuestionDraft,
+                      slideQuestionAsset:
+                        "slideQuestionAsset" in data
+                          ? (data as Partial<SlideData>).slideQuestionAsset
+                          : s.slideQuestionAsset,
+                      updatedAt: Date.now(),
+                    }
+                  : {
+                      ...s,
+                      provider: "provider" in data ? (data as Partial<EmbedSlideData>).provider ?? s.provider : s.provider,
+                      url: "url" in data ? (data as Partial<EmbedSlideData>).url ?? s.url : s.url,
+                      embedUrl: "embedUrl" in data ? (data as Partial<EmbedSlideData>).embedUrl ?? null : s.embedUrl,
+                      title: "title" in data ? (data as Partial<EmbedSlideData>).title ?? s.title : s.title,
+                      renderMode: "renderMode" in data ? (data as Partial<EmbedSlideData>).renderMode ?? s.renderMode : s.renderMode,
+                      slideQuestionDraft:
+                        "slideQuestionDraft" in data
+                          ? (data as Partial<SlideData>).slideQuestionDraft
+                          : s.slideQuestionDraft,
+                      slideQuestionAsset:
+                        "slideQuestionAsset" in data
+                          ? (data as Partial<SlideData>).slideQuestionAsset
+                          : s.slideQuestionAsset,
                       updatedAt: Date.now(),
                     };
               persistSlideToCache(updated, p.id, i);
@@ -705,7 +887,15 @@ export const usePresentationStore = create<PresentationStore>()(
 
             const existingSlide = p.slides[slideIndex];
             const clearedSlide: SlideData =
-              p.canvasEngine === "excalidraw"
+              existingSlide?.engine === "embed"
+                ? {
+                    ...createEmptySlide(p.canvasEngine),
+                    id: existingSlide.id,
+                    createdAt: existingSlide.createdAt,
+                    updatedAt: Date.now(),
+                    sceneVersion: (existingSlide.sceneVersion ?? 0) + 1,
+                  }
+                : p.canvasEngine === "excalidraw"
                 ? {
                     id: existingSlide?.id ?? nanoid(),
                     engine: "excalidraw" as const,
@@ -713,6 +903,8 @@ export const usePresentationStore = create<PresentationStore>()(
                     elements: [],
                     appState: createExcalidrawDefaultAppState(),
                     files: {},
+                    slideQuestionDraft: undefined,
+                    slideQuestionAsset: undefined,
                     createdAt: existingSlide?.createdAt ?? Date.now(),
                     updatedAt: Date.now(),
                   }
@@ -721,6 +913,8 @@ export const usePresentationStore = create<PresentationStore>()(
                     engine: "tldraw" as const,
                     sceneVersion: (existingSlide?.sceneVersion ?? 0) + 1,
                     snapshot: null,
+                    slideQuestionDraft: undefined,
+                    slideQuestionAsset: undefined,
                     createdAt: existingSlide?.createdAt ?? Date.now(),
                     updatedAt: Date.now(),
                   };
@@ -757,13 +951,15 @@ export const usePresentationStore = create<PresentationStore>()(
                   problemBaselineUpdatedAt: Date.now(),
                   updatedAt: Date.now(),
                 };
-              } else {
+              } else if (s.engine === "tldraw") {
                 updated = {
                   ...s,
                   problemBaselineSnapshot: s.snapshot ? deepClone(s.snapshot) : null,
                   problemBaselineUpdatedAt: Date.now(),
                   updatedAt: Date.now(),
                 };
+              } else {
+                return s;
               }
               persistSlideToCache(updated, p.id, i);
               return updated;
@@ -797,7 +993,7 @@ export const usePresentationStore = create<PresentationStore>()(
                   files: deepClone(s.problemBaselineFiles ?? {}),
                   updatedAt: Date.now(),
                 };
-              } else {
+              } else if (s.engine === "tldraw") {
                 if (s.problemBaselineSnapshot === undefined) return s;
                 updated = {
                   ...s,
@@ -805,6 +1001,8 @@ export const usePresentationStore = create<PresentationStore>()(
                   snapshot: s.problemBaselineSnapshot ? deepClone(s.problemBaselineSnapshot) : null,
                   updatedAt: Date.now(),
                 };
+              } else {
+                return s;
               }
               persistSlideToCache(updated, p.id, i);
               return updated;
@@ -837,13 +1035,15 @@ export const usePresentationStore = create<PresentationStore>()(
                   problemBaselineUpdatedAt: undefined,
                   updatedAt: Date.now(),
                 };
-              } else {
+              } else if (s.engine === "tldraw") {
                 updated = {
                   ...s,
                   problemBaselineSnapshot: undefined,
                   problemBaselineUpdatedAt: undefined,
                   updatedAt: Date.now(),
                 };
+              } else {
+                return s;
               }
               persistSlideToCache(updated, p.id, i);
               return updated;
@@ -1031,6 +1231,21 @@ export const usePresentationStore = create<PresentationStore>()(
             sceneVersion: s.sceneVersion,
             createdAt: s.createdAt,
             updatedAt: s.updatedAt,
+            ...(s.engine === "embed"
+                ? {
+                    provider: s.provider,
+                    url: s.url,
+                    embedUrl: s.embedUrl,
+                    title: s.title,
+                    renderMode: s.renderMode,
+                  }
+                : {}),
+            ...(s.slideQuestionDraft
+              ? { slideQuestionDraft: s.slideQuestionDraft }
+              : {}),
+            ...(s.slideQuestionAsset
+              ? { slideQuestionAsset: s.slideQuestionAsset }
+              : {}),
           })),
         })),
       }),
