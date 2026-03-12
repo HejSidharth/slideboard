@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { formatDistanceToNow } from "@/lib/date-utils";
-import { getSlidePreview } from "@/lib/slide-previews";
-import { getProviderLabel } from "@/lib/activity-embeds";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +37,6 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [newName, setNewName] = useState(presentation.name);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const {
     folders,
@@ -67,36 +63,6 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
 
     return segments.join(" / ");
   };
-
-  const firstSlideId = presentation.slides[0]?.id;
-  const firstSlide = presentation.slides[0];
-
-  useEffect(() => {
-    if (!firstSlideId) return;
-
-    let active = true;
-
-    const loadPreview = async () => {
-      const url = await getSlidePreview(firstSlideId);
-      if (!active) return;
-      setPreviewUrl(url);
-    };
-
-    void loadPreview();
-
-    const onPreviewUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<{ slideId: string }>;
-      if (customEvent.detail?.slideId !== firstSlideId) return;
-      void loadPreview();
-    };
-
-    window.addEventListener("slide-preview-updated", onPreviewUpdated as EventListener);
-
-    return () => {
-      active = false;
-      window.removeEventListener("slide-preview-updated", onPreviewUpdated as EventListener);
-    };
-  }, [firstSlideId]);
 
   const handleOpen = () => {
     router.push(`/presentation/${presentation.id}`);
@@ -144,38 +110,7 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
         className="group cursor-pointer overflow-hidden border-border py-0 transition-colors hover:border-primary/40"
         onClick={handleOpen}
       >
-        <CardContent className="p-0">
-          <div className="relative aspect-video border-b border-border bg-secondary/30">
-            {firstSlide?.engine === "embed" ? (
-              <div className="flex h-full flex-col justify-between bg-linear-to-br from-secondary to-background p-4">
-                <span className="w-fit rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  {getProviderLabel(firstSlide.provider)}
-                </span>
-                <div>
-                  <p className="line-clamp-2 text-sm font-semibold text-foreground">
-                    {firstSlide.title}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Embedded content slide
-                  </p>
-                </div>
-              </div>
-            ) : previewUrl ? (
-              <Image
-                src={previewUrl}
-                alt={`${presentation.name} preview`}
-                fill
-                unoptimized
-                className="object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                No preview yet
-              </div>
-            )}
-          </div>
-
-          <div className="p-4">
+        <CardContent className="p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <h3 className="truncate text-sm font-semibold tracking-tight md:text-base">{presentation.name}</h3>
@@ -253,7 +188,6 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
               <span>•</span>
               <span className="max-w-[170px] truncate">{folderPath}</span>
             </div>
-          </div>
         </CardContent>
       </Card>
 

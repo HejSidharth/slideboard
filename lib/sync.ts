@@ -59,6 +59,12 @@ function getConvexSiteUrl(): string {
     ?? "";
 }
 
+function buildConvexAssetUrl(storageId: string): string | null {
+  const convexSiteUrl = getConvexSiteUrl().replace(/\/$/, "");
+  if (!convexSiteUrl) return null;
+  return `${convexSiteUrl}/asset?id=${storageId}`;
+}
+
 /**
  * Upload a binary blob to Convex File Storage via the HTTP action endpoint.
  * Returns the storageId.
@@ -175,8 +181,10 @@ async function syncSlideToConvex(
       });
 
       // Cache the serving URL locally
-      const servingUrl = `${getConvexUrl().replace(/\/$/, "")}/asset?id=${asset.storageId}`;
-      await setCachedAssetUrl(asset.storageId, servingUrl);
+      const servingUrl = buildConvexAssetUrl(asset.storageId);
+      if (servingUrl) {
+        await setCachedAssetUrl(asset.storageId, servingUrl);
+      }
     }
 
     // Update the snapshot in IDB to store the stripped version
@@ -234,8 +242,10 @@ async function syncSlideToConvex(
         sizeBytes: asset.sizeBytes,
         contentHash: asset.contentHash,
       });
-      const servingUrl = `${getConvexUrl().replace(/\/$/, "")}/asset?id=${asset.storageId}`;
-      await setCachedAssetUrl(asset.storageId, servingUrl);
+      const servingUrl = buildConvexAssetUrl(asset.storageId);
+      if (servingUrl) {
+        await setCachedAssetUrl(asset.storageId, servingUrl);
+      }
     }
 
     const strippedSnapshotJson = JSON.stringify({ ...parsed, store: strippedStore });
@@ -375,6 +385,11 @@ async function rehydrateCachedSnapshot(
   const resolveUrl = async (storageId: string): Promise<string | null> => {
     const cachedUrl = await getCachedAssetUrl(storageId);
     if (cachedUrl) {
+      const normalizedAssetUrl = buildConvexAssetUrl(storageId);
+      if (normalizedAssetUrl && /\/asset\?id=/.test(cachedUrl) && cachedUrl !== normalizedAssetUrl) {
+        await setCachedAssetUrl(storageId, normalizedAssetUrl);
+        return normalizedAssetUrl;
+      }
       return cachedUrl;
     }
 
