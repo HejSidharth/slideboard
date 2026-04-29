@@ -47,6 +47,7 @@ import { SlideMcqCard } from "@/components/slides/slide-mcq-card";
 import { CalculatorPanel } from "@/components/editor/calculator-panel";
 import { CalculatorDockPanel } from "@/components/editor/calculator-panel";
 import { PresentationTimer } from "@/components/editor/presentation-timer";
+import { AmbientMusicMenu } from "@/components/editor/ambient-music-menu";
 import { captureElementAsPng } from "@/lib/capture-element-png";
 import {
   sendChatMessage,
@@ -155,6 +156,7 @@ export default function PresentationEditorPage() {
   const [embedTitleInput, setEmbedTitleInput] = useState("");
   const [editedName, setEditedName] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfExportFormat, setPdfExportFormat] = useState<PdfExportFormat>(() => {
     if (typeof window === "undefined") return "fit";
@@ -197,6 +199,7 @@ export default function PresentationEditorPage() {
   const calculatorModeRef = useRef(calculatorMode);
   const calculatorOpenRef = useRef(calculatorOpen);
   const rightPanelTabRef = useRef(rightPanelTab);
+  const shouldOpenPdfDialogRef = useRef(false);
 
   const presentation = usePresentationStore((s) =>
     s.presentations.find((p) => p.id === presentationId)
@@ -611,6 +614,58 @@ export default function PresentationEditorPage() {
     });
   }, []);
 
+  const inlineExcalidrawFilesForExport = useCallback(async (files: BinaryFiles): Promise<BinaryFiles> => {
+    const entries = Object.entries(files);
+    if (entries.length === 0) {
+      return files;
+    }
+
+    const nextEntries = await Promise.all(
+      entries.map(async ([fileId, value]) => {
+        if (!value || typeof value !== "object") {
+          return [fileId, value] as const;
+        }
+
+        const fileRecord = value as {
+          dataURL?: string;
+          mimeType?: string;
+        };
+        const dataURL = fileRecord.dataURL;
+
+        if (!dataURL || typeof dataURL !== "string" || dataURL.startsWith("data:")) {
+          return [fileId, value] as const;
+        }
+
+        try {
+          const response = await fetch(dataURL);
+          if (!response.ok) {
+            throw new Error(`Asset request failed with ${response.status}.`);
+          }
+
+          const blob = await response.blob();
+          const inlinedDataUrl = await blobToDataUrl(blob);
+          return [
+            fileId,
+            {
+              ...fileRecord,
+              dataURL: inlinedDataUrl,
+              mimeType: fileRecord.mimeType ?? blob.type,
+            },
+          ] as const;
+        } catch (error) {
+          console.warn("Failed to inline Excalidraw asset for export", {
+            fileId,
+            dataURL,
+            error,
+          });
+          return [fileId, value] as const;
+        }
+      }),
+    );
+
+    return Object.fromEntries(nextEntries) as BinaryFiles;
+  }, [blobToDataUrl]);
+
   const getBlobDimensions = useCallback(async (blob: Blob): Promise<{ width: number; height: number }> => {
     const bitmap = await createImageBitmap(blob);
     const dimensions = { width: bitmap.width, height: bitmap.height };
@@ -662,6 +717,7 @@ export default function PresentationEditorPage() {
 
       const appState = api.getAppState();
       const { exportToBlob } = await import("@excalidraw/excalidraw");
+      const exportFiles = await inlineExcalidrawFilesForExport(api.getFiles());
       return exportToBlob({
         elements,
         appState: {
@@ -669,12 +725,12 @@ export default function PresentationEditorPage() {
           exportBackground: true,
           viewBackgroundColor: appState.viewBackgroundColor ?? "#ffffff",
         },
-        files: api.getFiles(),
+        files: exportFiles,
         mimeType: "image/png",
         exportPadding: 48,
       });
     },
-    [createBlankPngBlob],
+    [createBlankPngBlob, inlineExcalidrawFilesForExport],
   );
 
   const isSlideLikelyBlank = useCallback((slide: SlideData): boolean => {
@@ -908,10 +964,15 @@ export default function PresentationEditorPage() {
         const targetSlide = presentation.slides[i];
         if (!targetSlide) continue;
 
-        setPdfRenderSlideIndex(i);
-        await waitForPdfRenderCanvas(targetSlide);
-        const blob = await captureMountedSlidePng(targetSlide, "pdf");
-        slideBlobs.push(blob);
+        try {
+          setPdfRenderSlideIndex(i);
+          await waitForPdfRenderCanvas(targetSlide);
+          const blob = await captureMountedSlidePng(targetSlide, "pdf");
+          slideBlobs.push(blob);
+        } catch (error) {
+          console.error(`Failed to export slide ${i + 1}`, error);
+          throw new Error(`Could not export slide ${i + 1}. This slide may include a cross-origin asset that blocks PDF export.`);
+        }
       }
 
       if (slideBlobs.length === 0) {
@@ -963,6 +1024,11 @@ export default function PresentationEditorPage() {
       pdf.save(fileName);
     } catch (error) {
       console.error("Failed to export deck PDF", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not export this deck as PDF.",
+      );
     } finally {
       setPdfRenderSlideIndex(null);
       setIsExportingDeckPdf(false);
@@ -976,6 +1042,23 @@ export default function PresentationEditorPage() {
     presentation,
     waitForPdfRenderCanvas,
   ]);
+
+  const handlePdfMenuSelect = useCallback((event: Event) => {
+    event.preventDefault();
+    shouldOpenPdfDialogRef.current = true;
+    setExportMenuOpen(false);
+  }, []);
+
+  const handleExportMenuOpenChange = useCallback((open: boolean) => {
+    setExportMenuOpen(open);
+
+    if (!open && shouldOpenPdfDialogRef.current) {
+      shouldOpenPdfDialogRef.current = false;
+      requestAnimationFrame(() => {
+        setPdfDialogOpen(true);
+      });
+    }
+  }, []);
 
   const waitForCanvasReady = useCallback(
     async (engine: "tldraw" | "excalidraw", timeoutMs = 2500) => {
@@ -1902,7 +1985,7 @@ export default function PresentationEditorPage() {
             </Button>
           ) : null}
 
-          <DropdownMenu>
+          <DropdownMenu open={exportMenuOpen} onOpenChange={handleExportMenuOpenChange}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
@@ -1921,7 +2004,7 @@ export default function PresentationEditorPage() {
                 As picture of slide
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() => setPdfDialogOpen(true)}
+                onSelect={handlePdfMenuSelect}
                 disabled={isExportingDeckPdf}
               >
                 <FileDown className="h-4 w-4" />
@@ -1954,6 +2037,8 @@ export default function PresentationEditorPage() {
           </Tooltip>
 
           <PresentationTimer presentationId={presentationId} />
+
+          <AmbientMusicMenu key={presentationId} presentationId={presentationId} />
 
           <Separator orientation="vertical" className="h-6" />
 
@@ -2136,7 +2221,7 @@ export default function PresentationEditorPage() {
 
       {pdfRenderSlide && (
         <div
-          aria-hidden
+          inert={true}
           className="pointer-events-none fixed -left-[20000px] top-0 h-[1080px] w-[1920px] overflow-hidden opacity-0"
         >
           {pdfRenderSlide.engine === "embed" ? (

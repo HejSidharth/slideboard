@@ -75,7 +75,7 @@ export default function HomePage() {
             </a>
             <h1 className="text-5xl lg:text-6xl font-semibold leading-[1.05] tracking-[-0.03em] text-balance mb-6 animate-fade-up [animation-delay:120ms]">
               Whiteboard lessons,{" "}
-              <span className="text-primary">reimagined</span>.
+              <span className="text-primary">reimagined.</span>
             </h1>
             
             <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-[560px] mb-10 animate-fade-up [animation-delay:220ms]">
