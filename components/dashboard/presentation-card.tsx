@@ -24,15 +24,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { MoreVertical, Pencil, Copy, Trash2 } from "lucide-react";
+import { CheckSquare, Copy, MoreVertical, Pencil, Square, Trash2 } from "lucide-react";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import type { Folder, Presentation as PresentationType } from "@/types";
 
 interface PresentationCardProps {
   presentation: PresentationType;
+  isSelected?: boolean;
+  selectionMode?: boolean;
+  onToggleSelected?: (presentationId: string) => void;
 }
 
-export function PresentationCard({ presentation }: PresentationCardProps) {
+export function PresentationCard({
+  presentation,
+  isSelected = false,
+  selectionMode = false,
+  onToggleSelected,
+}: PresentationCardProps) {
   const router = useRouter();
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -64,6 +72,10 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
   };
 
   const handleOpen = () => {
+    if (selectionMode) {
+      onToggleSelected?.(presentation.id);
+      return;
+    }
     router.push(`/presentation/${presentation.id}`);
   };
 
@@ -93,18 +105,45 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
   return (
     <>
       <Card
-        className="group cursor-pointer overflow-hidden border-border py-0 transition-colors hover:border-primary/40"
+        className={[
+          "group cursor-pointer overflow-hidden py-0 transition-colors hover:border-primary/40",
+          isSelected ? "border-primary bg-primary/5" : "border-border",
+        ].join(" ")}
         onClick={handleOpen}
       >
         <CardContent className="p-4">
-            <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              {selectionMode ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="mt-[-4px] h-8 w-8 shrink-0"
+                  aria-label={isSelected ? "Deselect deck" : "Select deck"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleSelected?.(presentation.id);
+                  }}
+                >
+                  {isSelected ? (
+                    <CheckSquare className="h-4 w-4 text-primary" />
+                  ) : (
+                    <Square className="h-4 w-4" />
+                  )}
+                </Button>
+              ) : null}
               <div className="min-w-0 flex-1">
-                <h3 className="truncate text-sm font-semibold tracking-tight md:text-base">{presentation.name}</h3>
+                <h3 className="truncate text-sm font-semibold tracking-tight md:text-base">
+                  {presentation.name}
+                </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Updated {formatDistanceToNow(presentation.updatedAt)}
                 </p>
               </div>
+            </div>
 
+            {!selectionMode ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                   <Button
@@ -163,13 +202,14 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
+            ) : null}
+          </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              <span>{slideCount} {slideCount === 1 ? "slide" : "slides"}</span>
-              <span>•</span>
-              <span className="max-w-[170px] truncate">{folderPath}</span>
-            </div>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <span>{slideCount} {slideCount === 1 ? "slide" : "slides"}</span>
+            <span>•</span>
+            <span className="max-w-[170px] truncate">{folderPath}</span>
+          </div>
         </CardContent>
       </Card>
 

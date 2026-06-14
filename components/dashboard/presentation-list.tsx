@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import { PresentationCard } from "./presentation-card";
 import { CreatePresentationDialog } from "./create-dialog";
@@ -28,12 +27,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, FileText, Loader2, Plus, Upload, FileUp, Share2 } from "lucide-react";
+import {
+  CheckSquare,
+  ChevronDown,
+  FileText,
+  FileUp,
+  Plus,
+  Square,
+  Trash2,
+  X,
+} from "lucide-react";
 import { File, Folder, Tree } from "@/components/ui/file-tree";
 import { ImportDocumentDialog } from "@/components/editor/import-document-dialog";
 import type { Folder as FolderType } from "@/types";
 import type { ExtractedProblem } from "@/types";
-import type { SlideData } from "@/types";
 
 const ALL_SCOPE = "all";
 const UNFILED_SCOPE = "unfiled";
@@ -65,20 +72,15 @@ function collectDescendantIds(folders: FolderType[], folderId: string): Set<stri
 }
 
 export function PresentationList() {
-  const router = useRouter();
   const presentations = usePresentationStore((s) => s.presentations);
   const folders = usePresentationStore((s) => s.folders);
-  const importPresentation = usePresentationStore((s) => s.importPresentation);
-  const movePresentationToFolder = usePresentationStore((s) => s.movePresentationToFolder);
   const createFolder = usePresentationStore((s) => s.createFolder);
   const renameFolder = usePresentationStore((s) => s.renameFolder);
   const deleteFolder = usePresentationStore((s) => s.deleteFolder);
   const createPresentation = usePresentationStore((s) => s.createPresentation);
-  const hydrateSlides = usePresentationStore((s) => s.hydrateSlides);
+  const deletePresentation = usePresentationStore((s) => s.deletePresentation);
   const addSlidesFromProblems = usePresentationStore((s) => s.addSlidesFromProblems);
   const deleteSlide = usePresentationStore((s) => s.deleteSlide);
-
-  const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
   const [scope, setScope] = useState<FolderScope>(ALL_SCOPE);
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,13 +93,11 @@ export function PresentationList() {
   const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
   const [createDeckFolderId, setCreateDeckFolderId] = useState<string | null>(null);
   const [importDocOpen, setImportDocOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // "Open by ID" dialog state
-  const [openByIdDialogOpen, setOpenByIdDialogOpen] = useState(false);
-  const [openByIdInput, setOpenByIdInput] = useState("");
-  const [openByIdLoading, setOpenByIdLoading] = useState(false);
-  const [openByIdError, setOpenByIdError] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPresentationIds, setSelectedPresentationIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const selectedFolder = useMemo(
     () => folders.find((folder) => folder.id === scope) ?? null,
@@ -154,24 +154,67 @@ export function PresentationList() {
   }, [searchedPresentations, sortBy]);
 
   const currentFolderId = scope !== ALL_SCOPE && scope !== UNFILED_SCOPE ? scope : null;
+  const visiblePresentationIds = useMemo(
+    () => new Set(sortedPresentations.map((presentation) => presentation.id)),
+    [sortedPresentations],
+  );
+  const selectedVisiblePresentationIds = useMemo(
+    () => [...selectedPresentationIds].filter((presentationId) =>
+      visiblePresentationIds.has(presentationId),
+    ),
+    [selectedPresentationIds, visiblePresentationIds],
+  );
+  const selectedCount = selectedVisiblePresentationIds.length;
+  const allVisibleSelected =
+    sortedPresentations.length > 0 &&
+    sortedPresentations.every((presentation) => selectedPresentationIds.has(presentation.id));
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const importedId = importPresentation(text);
-      if (importedId && currentFolderId) {
-        movePresentationToFolder(importedId, currentFolderId);
+  const toggleSelectionMode = () => {
+    setSelectionMode((nextSelectionMode) => {
+      if (nextSelectionMode) {
+        setSelectedPresentationIds(new Set());
       }
-    } catch (error) {
-      console.error("Failed to import file:", error);
-    }
+      return !nextSelectionMode;
+    });
+  };
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+  const togglePresentationSelected = (presentationId: string) => {
+    setSelectedPresentationIds((previousIds) => {
+      const nextIds = new Set(previousIds);
+      if (nextIds.has(presentationId)) {
+        nextIds.delete(presentationId);
+      } else {
+        nextIds.add(presentationId);
+      }
+      return nextIds;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedPresentationIds((previousIds) => {
+      if (allVisibleSelected) {
+        const nextIds = new Set(previousIds);
+        sortedPresentations.forEach((presentation) => {
+          nextIds.delete(presentation.id);
+        });
+        return nextIds;
+      }
+
+      const nextIds = new Set(previousIds);
+      sortedPresentations.forEach((presentation) => {
+        nextIds.add(presentation.id);
+      });
+      return nextIds;
+    });
+  };
+
+  const handleBulkDelete = () => {
+    selectedVisiblePresentationIds.forEach((presentationId) => {
+      deletePresentation(presentationId);
+    });
+    setSelectedPresentationIds(new Set());
+    setSelectionMode(false);
+    setBulkDeleteOpen(false);
   };
 
   const openCreateDeck = (folderId: string | null) => {
@@ -235,122 +278,6 @@ export function PresentationList() {
     [createPresentation, addSlidesFromProblems, deleteSlide, currentFolderId],
   );
 
-  const handleOpenById = useCallback(async () => {
-    const presentationId = openByIdInput.trim();
-    if (!presentationId) return;
-
-    setOpenByIdLoading(true);
-    setOpenByIdError(null);
-
-    try {
-      // Dynamically import Convex client + sync functions to avoid loading
-      // them when Convex isn't configured.
-      const [{ ConvexReactClient }, { pullPresentation }] =
-        await Promise.all([
-          import("convex/react"),
-          import("@/lib/sync"),
-        ]);
-
-      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL!;
-      const client = new ConvexReactClient(convexUrl);
-
-      const slideIds = await pullPresentation(client, presentationId);
-      if (!slideIds) {
-        setOpenByIdError("Board not found. Check the ID and try again.");
-        return;
-      }
-
-      // Check if we already have this presentation in the store
-      const alreadyExists = usePresentationStore.getState().presentations.some(
-        (p) => p.id === presentationId,
-      );
-
-      if (!alreadyExists) {
-        // Import a lightweight shell — canvas data will hydrate from IDB
-        const meta = await client.query(
-          (await import("@/convex/_generated/api")).api.presentations.getPresentation,
-          { presentationId },
-        );
-        if (!meta) {
-          setOpenByIdError("Board not found. Check the ID and try again.");
-          return;
-        }
-
-        const { loadSlidesFromCache } = await import("@/lib/sync");
-        const entries = await loadSlidesFromCache(presentationId);
-
-        // Build slide stubs from IDB data
-        const slides: SlideData[] = entries.map((e) => e.slideData);
-
-        // Inject into store directly
-        const { setPresentationMeta } = await import("@/lib/slide-cache");
-        // The createPresentation mutation would create a new ID — we need to
-        // inject the remote presentation with its original ID. We do this
-        // by building the Presentation object and updating the Zustand state
-        // directly via the store's internal set.
-        const { CURRENT_SCHEMA_VERSION } = await import("@/types");
-        usePresentationStore.setState((state) => ({
-          presentations: [
-            ...state.presentations,
-            {
-              id: presentationId,
-              name: meta.name,
-              canvasEngine: meta.canvasEngine,
-              folderId: null,
-              slides: slides.length > 0 ? slides : [
-                {
-                  id: slideIds[0] ?? presentationId + "-slide0",
-                  engine: meta.canvasEngine,
-                  sceneVersion: 0,
-                  ...(meta.canvasEngine === "tldraw"
-                    ? { snapshot: null }
-                    : { elements: [], appState: {}, files: {} }),
-                  createdAt: meta.createdAt,
-                  updatedAt: meta.updatedAt,
-                } as SlideData,
-              ],
-              currentSlideIndex: meta.currentSlideIndex,
-              createdAt: meta.createdAt,
-              updatedAt: meta.updatedAt,
-              version: CURRENT_SCHEMA_VERSION,
-            },
-          ],
-        }));
-
-        // Store meta in IDB
-        await setPresentationMeta({
-          presentationId,
-          name: meta.name,
-          canvasEngine: meta.canvasEngine,
-          folderId: null,
-          currentSlideIndex: meta.currentSlideIndex,
-          slideIds,
-          version: CURRENT_SCHEMA_VERSION,
-          createdAt: meta.createdAt,
-          updatedAt: meta.updatedAt,
-          syncedAt: Date.now(),
-          cloudSynced: true,
-        });
-      } else {
-        // Already have it — refresh slides from IDB
-        const { loadSlidesFromCache } = await import("@/lib/sync");
-        const entries = await loadSlidesFromCache(presentationId);
-        if (entries.length > 0) {
-          hydrateSlides(presentationId, entries.map((e) => e.slideData));
-        }
-      }
-
-      setOpenByIdDialogOpen(false);
-      setOpenByIdInput("");
-      router.push(`/presentation/${presentationId}`);
-    } catch (err) {
-      console.error("[open-by-id]", err);
-      setOpenByIdError("Something went wrong. Please try again.");
-    } finally {
-      setOpenByIdLoading(false);
-    }
-  }, [openByIdInput, hydrateSlides, router]);
-
   const renderFolderNodes = (parentId: string | null): React.ReactNode => {
     const nodes = childrenMap.get(parentId) ?? [];
     return nodes.map((folder) => (
@@ -395,20 +322,10 @@ export function PresentationList() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => openCreateDeck(currentFolderId)}>New Deck</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => openCreateFolder(currentFolderId)}>New Folder</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" />
-                Import Deck
-              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => openAfterContextMenu(() => setImportDocOpen(true))}>
                 <FileUp className="mr-2 h-4 w-4" />
                 Import from Document
               </DropdownMenuItem>
-              {hasConvex && (
-                <DropdownMenuItem onSelect={() => openAfterContextMenu(() => setOpenByIdDialogOpen(true))}>
-                  <Share2 className="mr-2 h-4 w-4" />
-                  Open by ID
-                </DropdownMenuItem>
-              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -422,6 +339,20 @@ export function PresentationList() {
           />
 
           <div className="flex items-center gap-2">
+            <Button
+              variant={selectionMode ? "default" : "outline"}
+              className="h-9 gap-1.5 px-3 text-xs"
+              onClick={toggleSelectionMode}
+              disabled={sortedPresentations.length === 0}
+            >
+              {selectionMode ? (
+                <CheckSquare className="h-3.5 w-3.5" />
+              ) : (
+                <Square className="h-3.5 w-3.5" />
+              )}
+              Select
+            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="h-9 gap-1.5 px-3 text-xs">
@@ -442,13 +373,6 @@ export function PresentationList() {
           </div>
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,.slideboard.json"
-          className="hidden"
-          onChange={handleImport}
-        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -482,6 +406,44 @@ export function PresentationList() {
         </ContextMenu>
 
         <section>
+          {selectionMode && sortedPresentations.length > 0 ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={toggleSelectAllVisible}
+                >
+                  {allVisibleSelected ? (
+                    <CheckSquare className="h-3.5 w-3.5" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5" />
+                  )}
+                  {allVisibleSelected ? "Clear all" : "Select all"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => setSelectedPresentationIds(new Set())}
+                  disabled={selectedCount === 0}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Clear
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => setBulkDeleteOpen(true)}
+                  disabled={selectedCount === 0}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete selected
+                </Button>
+            </div>
+          ) : null}
+
           {sortedPresentations.length === 0 ? (
             <div className="flex min-h-[36vh] flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-10 text-center">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-lg border border-border bg-secondary">
@@ -493,13 +455,19 @@ export function PresentationList() {
               <p className="mt-2 max-w-xl text-sm text-muted-foreground">
                 {searchQuery.trim()
                   ? "Try a different deck name or clear your search."
-                  : "Create a deck in this view or import an existing SlideBoard file."}
+                  : "Create a deck in this view or import pages from a document."}
               </p>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               {sortedPresentations.map((presentation) => (
-                <PresentationCard key={presentation.id} presentation={presentation} />
+                <PresentationCard
+                  key={presentation.id}
+                  presentation={presentation}
+                  isSelected={selectedPresentationIds.has(presentation.id)}
+                  selectionMode={selectionMode}
+                  onToggleSelected={togglePresentationSelected}
+                />
               ))}
             </div>
           )}
@@ -581,64 +549,25 @@ export function PresentationList() {
         onImportComplete={handleDocumentImportComplete}
       />
 
-      {hasConvex && (
-        <Dialog
-          open={openByIdDialogOpen}
-          onOpenChange={(open) => {
-            setOpenByIdDialogOpen(open);
-            if (!open) {
-              setOpenByIdInput("");
-              setOpenByIdError(null);
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Open board by ID</DialogTitle>
-              <DialogDescription>
-                Enter a SlideBoard presentation ID shared with you to open it on this device.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-3 space-y-2">
-              <Input
-                value={openByIdInput}
-                onChange={(e) => {
-                  setOpenByIdInput(e.target.value);
-                  setOpenByIdError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleOpenById();
-                  }
-                }}
-                placeholder="Paste presentation ID..."
-                autoFocus
-                disabled={openByIdLoading}
-              />
-              {openByIdError && (
-                <p className="text-sm text-destructive">{openByIdError}</p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setOpenByIdDialogOpen(false)}
-                disabled={openByIdLoading}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleOpenById}
-                disabled={!openByIdInput.trim() || openByIdLoading}
-              >
-                {openByIdLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Open
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Selected Decks</DialogTitle>
+            <DialogDescription>
+              Delete {selectedCount} selected {selectedCount === 1 ? "deck" : "decks"}?
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleBulkDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
