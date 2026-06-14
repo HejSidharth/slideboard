@@ -4,6 +4,17 @@ import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 
 const changelogEntries = [
   {
+    date: "June 14, 2026",
+    title: "Export Flow and Eraser Safety",
+    summary: "PDF export now gives clear progress feedback, and erasing annotations over imported material no longer removes the underlying image. Thanks to Vishan Patel for the suggestions that shaped this polish pass.",
+    details: [
+      "Added an in-dialog progress indicator while PDF exports render and save.",
+      "Protected pasted images and imported document pages from accidental eraser deletion while keeping explicit select-and-delete behavior intact.",
+      "Removed the legacy JSON export actions from the editor and dashboard.",
+      "Cleaned up lint coverage so generated and minified artifacts no longer block the app quality gate.",
+    ],
+  },
+  {
     date: "March 3, 2026",
     title: "Landing Page Messaging Refresh",
     summary: "Sharpened the homepage CTA and open-source positioning so the product pitch is clearer at first glance.",
