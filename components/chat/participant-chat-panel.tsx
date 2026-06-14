@@ -10,6 +10,7 @@ import { Trash2 } from "lucide-react";
 import { useAnonymousIdentity } from "@/hooks/use-anonymous-identity";
 import { ParticipantChatMessages } from "./participant-chat-messages";
 import { ChatInput } from "./chat-input";
+import type { Id } from "@/convex/_generated/dataModel";
 
 interface ParticipantChatPanelProps {
   presentationId: string;
@@ -42,7 +43,7 @@ export function ParticipantChatPanel({
 
   const handleToggleLike = useCallback(
     (messageId: string) => {
-      toggleLike({ messageId: messageId as any, participantId });
+      toggleLike({ messageId: messageId as Id<"messages">, participantId });
     },
     [toggleLike, participantId]
   );

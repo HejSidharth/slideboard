@@ -140,7 +140,6 @@ export interface PresentationStore {
   goToNextSlide: (presentationId: string) => void;
   goToPreviousSlide: (presentationId: string) => void;
 
-  exportPresentation: (id: string) => string;
   importPresentation: (data: string) => string | null;
 
   addSlidesFromProblems: (

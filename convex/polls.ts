@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 
 export const list = query({
   args: {
@@ -42,7 +43,7 @@ export const list = query({
         // Poll likes
         const pollLikes = await ctx.db
           .query("pollLikes")
-          .withIndex("by_poll", (q: any) => q.eq("pollId", poll._id))
+          .withIndex("by_poll", (q) => q.eq("pollId", poll._id))
           .collect();
 
         const pollLikeCount = pollLikes.length;
@@ -72,13 +73,13 @@ export const list = query({
  * Used to enforce single-active-poll mode.
  */
 async function closeActivePolls(
-  ctx: { db: any },
+  ctx: Pick<MutationCtx, "db">,
   presentationId: string,
   excludePollId?: string
 ) {
   const activePolls = await ctx.db
     .query("polls")
-    .withIndex("by_presentation", (q: any) =>
+    .withIndex("by_presentation", (q) =>
       q.eq("presentationId", presentationId)
     )
     .collect();
@@ -108,7 +109,7 @@ export const create = mutation({
     if (args.clientRequestId) {
       const existing = await ctx.db
         .query("polls")
-        .withIndex("by_client_request", (q: any) =>
+        .withIndex("by_client_request", (q) =>
           q
             .eq("presentationId", args.presentationId)
             .eq("clientRequestId", args.clientRequestId)
@@ -202,7 +203,7 @@ export const remove = mutation({
     // Also delete poll likes
     const pollLikes = await ctx.db
       .query("pollLikes")
-      .withIndex("by_poll", (q: any) => q.eq("pollId", args.pollId))
+      .withIndex("by_poll", (q) => q.eq("pollId", args.pollId))
       .collect();
 
     for (const like of pollLikes) {
@@ -236,7 +237,7 @@ export const vote = mutation({
 
     const existingVote = await ctx.db
       .query("votes")
-      .withIndex("by_poll_participant", (q: any) =>
+      .withIndex("by_poll_participant", (q) =>
         q.eq("pollId", args.pollId).eq("participantId", args.participantId)
       )
       .first();
@@ -270,7 +271,7 @@ export const togglePollLike = mutation({
 
     const existing = await ctx.db
       .query("pollLikes")
-      .withIndex("by_poll_participant", (q: any) =>
+      .withIndex("by_poll_participant", (q) =>
         q.eq("pollId", args.pollId).eq("participantId", args.participantId)
       )
       .first();

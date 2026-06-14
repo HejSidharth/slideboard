@@ -26,6 +26,19 @@ export interface TldrawWrapperProps {
 let cachedLicenseKey: string | null | undefined;
 let licenseRequest: Promise<string | null> | null = null;
 
+function isImageShapeRecord(record: TLRecord): boolean {
+  return record.typeName === "shape" && (record as { type?: unknown }).type === "image";
+}
+
+function isEraserDelete(editor: Editor, removedShapeIds: string[]): boolean {
+  if (editor.getCurrentToolId() === "eraser") {
+    return true;
+  }
+
+  const erasingShapeIds = editor.getErasingShapeIds().map(String);
+  return removedShapeIds.some((id) => erasingShapeIds.includes(id));
+}
+
 async function loadTldrawLicenseKey(): Promise<string | null> {
   if (cachedLicenseKey !== undefined) {
     return cachedLicenseKey;
@@ -66,6 +79,7 @@ function TldrawWrapper({
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storeCleanupRef = useRef<(() => void) | null>(null);
   const isHydratingRef = useRef(false);
+  const isRestoringEraserImagesRef = useRef(false);
   const [loadedLicenseKey, setLoadedLicenseKey] = useState<string | null>(null);
   const effectiveLicenseKey = licenseKey ?? loadedLicenseKey;
 
@@ -176,8 +190,26 @@ function TldrawWrapper({
 
       if (onChangeRef.current) {
         storeCleanupRef.current = editor.store.listen(
-          () => {
-            if (isHydratingRef.current) return;
+          (entry) => {
+            if (isHydratingRef.current || isRestoringEraserImagesRef.current) return;
+
+            const removedImageShapes = Object.values(entry.changes.removed)
+              .filter(isImageShapeRecord);
+            const removedImageShapeIds = removedImageShapes.map((record) => String(record.id));
+
+            if (
+              removedImageShapes.length > 0 &&
+              isEraserDelete(editor, removedImageShapeIds)
+            ) {
+              isRestoringEraserImagesRef.current = true;
+              try {
+                editor.store.mergeRemoteChanges(() => {
+                  editor.store.put(removedImageShapes);
+                });
+              } finally {
+                isRestoringEraserImagesRef.current = false;
+              }
+            }
 
             if (saveTimeoutRef.current) {
               clearTimeout(saveTimeoutRef.current);

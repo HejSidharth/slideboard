@@ -51,7 +51,7 @@ export const send = mutation({
     if (args.clientMessageId) {
       const existing = await ctx.db
         .query("messages")
-        .withIndex("by_client_message", (q: any) =>
+        .withIndex("by_client_message", (q) =>
           q
             .eq("presentationId", args.presentationId)
             .eq("clientMessageId", args.clientMessageId)
@@ -85,7 +85,7 @@ export const toggleLike = mutation({
     // Check if already liked
     const existing = await ctx.db
       .query("likes")
-      .withIndex("by_message_participant", (q: any) =>
+      .withIndex("by_message_participant", (q) =>
         q
           .eq("messageId", args.messageId)
           .eq("participantId", args.participantId)

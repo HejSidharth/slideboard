@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 
 // ---------------------------------------------------------------------------
 // Host session helpers
@@ -20,7 +21,7 @@ export const registerHost = mutation({
 
     const existing = await ctx.db
       .query("hostSessions")
-      .withIndex("by_presentation", (q: any) =>
+      .withIndex("by_presentation", (q) =>
         q.eq("presentationId", args.presentationId)
       )
       .first();
@@ -52,7 +53,7 @@ export const verifyHost = query({
     if (!args.token) return false;
     const existing = await ctx.db
       .query("hostSessions")
-      .withIndex("by_token", (q: any) =>
+      .withIndex("by_token", (q) =>
         q.eq("presentationId", args.presentationId).eq("token", args.token)
       )
       .first();
@@ -62,14 +63,14 @@ export const verifyHost = query({
 
 /** Internal helper to check host auth — used inside mutations. */
 async function assertHost(
-  ctx: { db: any },
+  ctx: Pick<QueryCtx, "db">,
   presentationId: string,
   hostToken: string
 ): Promise<boolean> {
   if (!hostToken) return false;
   const session = await ctx.db
     .query("hostSessions")
-    .withIndex("by_token", (q: any) =>
+    .withIndex("by_token", (q) =>
       q.eq("presentationId", presentationId).eq("token", hostToken)
     )
     .first();
@@ -94,7 +95,7 @@ export const list = query({
 
     const questions = await ctx.db
       .query("questions")
-      .withIndex("by_presentation", (q: any) =>
+      .withIndex("by_presentation", (q) =>
         q.eq("presentationId", args.presentationId)
       )
       .order("asc")
@@ -102,11 +103,11 @@ export const list = query({
 
     const enriched = await Promise.all(
       questions
-        .filter((q: any) => isHost || !q.isHidden)
-        .map(async (question: any) => {
+        .filter((q) => isHost || !q.isHidden)
+        .map(async (question) => {
           const vote = await ctx.db
             .query("questionVotes")
-            .withIndex("by_question_voter", (q: any) =>
+            .withIndex("by_question_voter", (q) =>
               q
                 .eq("questionId", question._id)
                 .eq("voterId", args.participantId)
@@ -123,7 +124,7 @@ export const list = query({
 
     // Sort: unanswered first; within each group sort by upvotes desc,
     // then by createdAt desc (newest first for equal upvotes).
-    enriched.sort((a: any, b: any) => {
+    enriched.sort((a, b) => {
       if (a.isAnswered !== b.isAnswered) return a.isAnswered ? 1 : -1;
       if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes;
       return b.createdAt - a.createdAt;
@@ -170,7 +171,7 @@ export const toggleUpvote = mutation({
 
     const existing = await ctx.db
       .query("questionVotes")
-      .withIndex("by_question_voter", (q: any) =>
+      .withIndex("by_question_voter", (q) =>
         q.eq("questionId", args.questionId).eq("voterId", args.voterId)
       )
       .first();
@@ -246,7 +247,7 @@ export const remove = mutation({
     // Cascade delete votes
     const votes = await ctx.db
       .query("questionVotes")
-      .withIndex("by_question", (q: any) => q.eq("questionId", args.questionId))
+      .withIndex("by_question", (q) => q.eq("questionId", args.questionId))
       .collect();
 
     for (const vote of votes) {

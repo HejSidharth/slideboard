@@ -8,7 +8,7 @@ SlideBoard is a minimal presentation tool that combines a slide deck with Excali
 - Create, duplicate, reorder, and delete slides
 - Presentation mode for full-screen delivery
 - Auto-save to localStorage
-- Import and export presentations as JSON
+- Import previously saved SlideBoard decks
 - Optional AI assistant sidebar powered by OpenRouter
 - Light and dark themes
 
@@ -61,10 +61,9 @@ Open the local URL shown in your terminal (usually `localhost` on port `3000`).
 - Click the "Present" button to enter presentation mode.
 - Use on-screen controls or keyboard shortcuts to navigate.
 
-### Export and import
+### Import
 
-- Export a deck from the toolbar to download a JSON file.
-- Import a previously exported file from the dashboard.
+- Import a SlideBoard JSON file from the dashboard.
 
 ### AI assistant (optional)
 

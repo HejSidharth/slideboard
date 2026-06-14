@@ -1109,12 +1109,6 @@ export const usePresentationStore = create<PresentationStore>()(
         get().setCurrentSlide(presentationId, newIndex);
       },
 
-      exportPresentation: (id: string) => {
-        const presentation = get().presentations.find((p) => p.id === id);
-        if (!presentation) return "";
-        return JSON.stringify(presentation, null, 2);
-      },
-
       importPresentation: (data: string) => {
         try {
           const parsed = JSON.parse(data) as Presentation;

@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { MoreVertical, Pencil, Copy, Trash2, Download } from "lucide-react";
+import { MoreVertical, Pencil, Copy, Trash2 } from "lucide-react";
 import { usePresentationStore } from "@/store/use-presentation-store";
 import type { Folder, Presentation as PresentationType } from "@/types";
 
@@ -43,7 +43,6 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
     renamePresentation,
     deletePresentation,
     duplicatePresentation,
-    exportPresentation,
     movePresentationToFolder,
   } = usePresentationStore();
 
@@ -82,19 +81,6 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
   const handleDelete = () => {
     deletePresentation(presentation.id);
     setDeleteOpen(false);
-  };
-
-  const handleExport = () => {
-    const data = exportPresentation(presentation.id);
-    if (!data) return;
-
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${presentation.name.replace(/[^a-z0-9]/gi, "_")}.slideboard.json`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const slideCount = presentation.slides.length;
@@ -141,10 +127,6 @@ export function PresentationCard({ presentation }: PresentationCardProps) {
                   <DropdownMenuItem onSelect={handleDuplicate}>
                     <Copy className="mr-2 h-4 w-4" />
                     Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={handleExport}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Export
                   </DropdownMenuItem>
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>Move to folder</DropdownMenuSubTrigger>

@@ -1,19 +1,20 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 // ---------------------------------------------------------------------------
 // Auth helper — reuses the same hostSessions table as convex/questions.ts
 // ---------------------------------------------------------------------------
 
 async function assertHost(
-  ctx: { db: any },
+  ctx: Pick<QueryCtx, "db">,
   presentationId: string,
   hostToken: string,
 ): Promise<boolean> {
   if (!hostToken) return false;
   const session = await ctx.db
     .query("hostSessions")
-    .withIndex("by_token", (q: any) =>
+    .withIndex("by_token", (q) =>
       q.eq("presentationId", presentationId).eq("token", hostToken),
     )
     .first();
@@ -25,13 +26,13 @@ async function assertHost(
 // ---------------------------------------------------------------------------
 
 async function closeActiveQuestions(
-  ctx: { db: any },
+  ctx: Pick<MutationCtx, "db">,
   presentationId: string,
   excludeId?: string,
 ) {
   const all = await ctx.db
     .query("hostedQuestions")
-    .withIndex("by_presentation", (q: any) =>
+    .withIndex("by_presentation", (q) =>
       q.eq("presentationId", presentationId),
     )
     .collect();
@@ -62,24 +63,24 @@ export const list = query({
 
     const questions = await ctx.db
       .query("hostedQuestions")
-      .withIndex("by_presentation", (q: any) =>
+      .withIndex("by_presentation", (q) =>
         q.eq("presentationId", args.presentationId),
       )
       .order("desc")
       .take(50);
 
     const enriched = await Promise.all(
-      questions.map(async (hq: any) => {
+      questions.map(async (hq) => {
         const answers = await ctx.db
           .query("hostedAnswers")
-          .withIndex("by_question", (q: any) => q.eq("questionId", hq._id))
+          .withIndex("by_question", (q) => q.eq("questionId", hq._id))
           .collect();
 
         const answerCount = answers.length;
 
         // My answer for this participant
         const myAnswerRow = answers.find(
-          (a: any) => a.participantId === args.participantId,
+          (a) => a.participantId === args.participantId,
         );
         const myAnswer = myAnswerRow
           ? {
@@ -110,7 +111,7 @@ export const list = query({
 
         if (isHost) {
           // Host sees all responses
-          const answerList = answers.map((a: any) => ({
+          const answerList = answers.map((a) => ({
             participantId: a.participantId,
             mcqIndex: a.mcqIndex ?? null,
             freeText: a.freeText ?? null,
@@ -159,7 +160,7 @@ export const create = mutation({
     if (args.clientRequestId) {
       const existing = await ctx.db
         .query("hostedQuestions")
-        .withIndex("by_client_request", (q: any) =>
+        .withIndex("by_client_request", (q) =>
           q
             .eq("presentationId", args.presentationId)
             .eq("clientRequestId", args.clientRequestId),
@@ -285,7 +286,7 @@ export const remove = mutation({
 
     const answers = await ctx.db
       .query("hostedAnswers")
-      .withIndex("by_question", (q: any) => q.eq("questionId", args.questionId))
+      .withIndex("by_question", (q) => q.eq("questionId", args.questionId))
       .collect();
 
     for (const answer of answers) {
@@ -341,7 +342,7 @@ export const submitAnswer = mutation({
     // Upsert: one answer per participant per question
     const existing = await ctx.db
       .query("hostedAnswers")
-      .withIndex("by_question_participant", (q: any) =>
+      .withIndex("by_question_participant", (q) =>
         q
           .eq("questionId", args.questionId)
           .eq("participantId", args.participantId),

@@ -140,6 +140,11 @@ interface AssistantInsertPayload {
 }
 
 type PdfExportFormat = "fit" | "a4";
+type PdfExportProgress = {
+  completed: number;
+  label: string;
+  total: number;
+};
 type SlideVisionTask = "summarize_slide" | "solve_slide" | "clean_notes";
 
 export default function PresentationEditorPage() {
@@ -164,6 +169,7 @@ export default function PresentationEditorPage() {
     return stored === "a4" ? "a4" : "fit";
   });
   const [isExportingDeckPdf, setIsExportingDeckPdf] = useState(false);
+  const [pdfExportProgress, setPdfExportProgress] = useState<PdfExportProgress | null>(null);
   type RightPanelTab = "assistant" | "activities" | "questions" | null;
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(() => {
     if (typeof window === "undefined") return null;
@@ -210,7 +216,6 @@ export default function PresentationEditorPage() {
   const addEmbedSlide = usePresentationStore((s) => s.addEmbedSlide);
   const goToNextSlide = usePresentationStore((s) => s.goToNextSlide);
   const goToPreviousSlide = usePresentationStore((s) => s.goToPreviousSlide);
-  const exportPresentation = usePresentationStore((s) => s.exportPresentation);
   const hydrateSlides = usePresentationStore((s) => s.hydrateSlides);
   const createHostedQuestion = useMutation(api.hostedQuestions.create);
 
@@ -243,6 +248,13 @@ export default function PresentationEditorPage() {
     if (!presentation || pdfRenderSlideIndex === null) return null;
     return presentation.slides[pdfRenderSlideIndex] ?? null;
   }, [pdfRenderSlideIndex, presentation]);
+  const pdfExportProgressPercent = useMemo(() => {
+    if (!pdfExportProgress || pdfExportProgress.total === 0) return 0;
+    return Math.min(
+      100,
+      Math.round((pdfExportProgress.completed / pdfExportProgress.total) * 100),
+    );
+  }, [pdfExportProgress]);
 
   const currentSlideId = currentSlide?.id;
   const currentSlideEngine = currentSlide?.engine;
@@ -459,19 +471,6 @@ export default function PresentationEditorPage() {
     presentation,
     presentationId,
   ]);
-
-  const handleExport = () => {
-    const data = exportPresentation(presentationId);
-    if (!data || !presentation) return;
-
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${presentation.name.replace(/[^a-z0-9]/gi, "_")}.slideboard.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   const handlePresent = () => {
     router.push(`/presentation/${presentationId}/present`);
@@ -955,7 +954,11 @@ export default function PresentationEditorPage() {
     if (!presentation || isExportingDeckPdf) return;
 
     setIsExportingDeckPdf(true);
-    setPdfDialogOpen(false);
+    setPdfExportProgress({
+      completed: 0,
+      label: "Preparing PDF export...",
+      total: presentation.slides.length,
+    });
 
     try {
       const slideBlobs: Blob[] = [];
@@ -965,10 +968,20 @@ export default function PresentationEditorPage() {
         if (!targetSlide) continue;
 
         try {
+          setPdfExportProgress({
+            completed: i,
+            label: `Rendering slide ${i + 1} of ${presentation.slides.length}...`,
+            total: presentation.slides.length,
+          });
           setPdfRenderSlideIndex(i);
           await waitForPdfRenderCanvas(targetSlide);
           const blob = await captureMountedSlidePng(targetSlide, "pdf");
           slideBlobs.push(blob);
+          setPdfExportProgress({
+            completed: i + 1,
+            label: `Rendered slide ${i + 1} of ${presentation.slides.length}.`,
+            total: presentation.slides.length,
+          });
         } catch (error) {
           console.error(`Failed to export slide ${i + 1}`, error);
           throw new Error(`Could not export slide ${i + 1}. This slide may include a cross-origin asset that blocks PDF export.`);
@@ -978,6 +991,12 @@ export default function PresentationEditorPage() {
       if (slideBlobs.length === 0) {
         return;
       }
+
+      setPdfExportProgress({
+        completed: presentation.slides.length,
+        label: "Building PDF file...",
+        total: presentation.slides.length,
+      });
 
       const firstDimensions = await getBlobDimensions(slideBlobs[0]);
       const firstRatio =
@@ -1022,6 +1041,7 @@ export default function PresentationEditorPage() {
 
       const fileName = `${presentation.name.replace(/[^a-z0-9]/gi, "_")}.pdf`;
       pdf.save(fileName);
+      setPdfDialogOpen(false);
     } catch (error) {
       console.error("Failed to export deck PDF", error);
       toast.error(
@@ -1031,6 +1051,7 @@ export default function PresentationEditorPage() {
       );
     } finally {
       setPdfRenderSlideIndex(null);
+      setPdfExportProgress(null);
       setIsExportingDeckPdf(false);
     }
   }, [
@@ -1043,10 +1064,8 @@ export default function PresentationEditorPage() {
     waitForPdfRenderCanvas,
   ]);
 
-  const handlePdfMenuSelect = useCallback((event: Event) => {
-    event.preventDefault();
+  const handlePdfMenuSelect = useCallback(() => {
     shouldOpenPdfDialogRef.current = true;
-    setExportMenuOpen(false);
   }, []);
 
   const handleExportMenuOpenChange = useCallback((open: boolean) => {
@@ -2010,10 +2029,6 @@ export default function PresentationEditorPage() {
                 <FileDown className="h-4 w-4" />
                 {isExportingDeckPdf ? "Exporting PDF..." : "As PDF"}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleExport}>
-                <Download className="h-4 w-4" />
-                As JSON export
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -2321,6 +2336,32 @@ export default function PresentationEditorPage() {
               A4 landscape
             </Button>
           </div>
+
+          {isExportingDeckPdf && pdfExportProgress ? (
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {pdfExportProgress.label}
+                </span>
+                <span className="shrink-0 font-medium tabular-nums">
+                  {pdfExportProgressPercent}%
+                </span>
+              </div>
+              <div
+                aria-label="PDF export progress"
+                aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuenow={pdfExportProgressPercent}
+                className="h-2 overflow-hidden rounded-full bg-muted"
+                role="progressbar"
+              >
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+                  style={{ width: `${pdfExportProgressPercent}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
 
           <DialogFooter>
             <Button

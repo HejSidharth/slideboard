@@ -47,6 +47,7 @@ interface ExcalidrawWrapperProps {
 }
 
 interface ExcalidrawApiLike {
+  getSceneElements?: () => readonly ExcalidrawElement[];
   updateScene?: (sceneData: {
     elements?: readonly ExcalidrawElement[];
     appState?: Partial<AppState>;
@@ -70,6 +71,20 @@ function normalizeInitialAppState(appState: Partial<AppState>): Partial<AppState
   return nextState;
 }
 
+function isImageElement(element: ExcalidrawElement): boolean {
+  return element.type === "image";
+}
+
+function isDeletedElement(element: ExcalidrawElement): boolean {
+  return element.isDeleted === true;
+}
+
+function isEraserActive(appState: AppState): boolean {
+  return (
+    (appState.activeTool as { type?: unknown } | undefined)?.type === "eraser"
+  );
+}
+
 export default function ExcalidrawWrapper({
   initialElements = [],
   initialAppState = {},
@@ -81,10 +96,53 @@ export default function ExcalidrawWrapper({
 }: ExcalidrawWrapperProps) {
   const { resolvedTheme } = useTheme();
   const apiRef = useRef<ExcalidrawApiLike | null>(null);
+  const lastElementsRef = useRef<readonly ExcalidrawElement[]>(initialElements);
+  const isRestoringEraserImagesRef = useRef(false);
 
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
       if (isReadonly) return;
+
+      if (isRestoringEraserImagesRef.current) {
+        lastElementsRef.current = elements;
+        onChange?.(elements, appState, files);
+        return;
+      }
+
+      if (isEraserActive(appState)) {
+        const previousElementsById = new Map(
+          lastElementsRef.current.map((element) => [element.id, element]),
+        );
+        let restoredAnyImage = false;
+
+        const restoredElements = elements.map((element) => {
+          if (!isImageElement(element) || !isDeletedElement(element)) {
+            return element;
+          }
+
+          const previousElement = previousElementsById.get(element.id);
+          if (!previousElement || isDeletedElement(previousElement)) {
+            return element;
+          }
+
+          restoredAnyImage = true;
+          return previousElement;
+        });
+
+        if (restoredAnyImage) {
+          isRestoringEraserImagesRef.current = true;
+          try {
+            apiRef.current?.updateScene?.({ elements: restoredElements });
+          } finally {
+            isRestoringEraserImagesRef.current = false;
+          }
+          lastElementsRef.current = restoredElements;
+          onChange?.(restoredElements, appState, files);
+          return;
+        }
+      }
+
+      lastElementsRef.current = elements;
       onChange?.(elements, appState, files);
     },
     [isReadonly, onChange],
@@ -103,6 +161,10 @@ export default function ExcalidrawWrapper({
     },
     [initialAppState, initialElements, initialFiles],
   );
+
+  useEffect(() => {
+    lastElementsRef.current = initialData.elements;
+  }, [initialData.elements]);
 
   const handleApiReady = useCallback(
     (api: unknown) => {
